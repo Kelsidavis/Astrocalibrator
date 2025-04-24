@@ -694,55 +694,6 @@ run_calibration_btn.pack(anchor='e', pady=5)
 progress_bar = ttk.Progressbar(root, variable=progress_var, maximum=100)
 progress_bar.pack(fill=tk.X, padx=10, pady=10)
 
-# cpu_frame = tk.Frame(root)
-# cpu_frame.pack(pady=5)
-# tk.Label(cpu_frame, text="CPU Usage").pack()
-# cpu_fig = Figure(figsize=(5, 1.5), dpi=100)
-# cpu_ax = cpu_fig.add_subplot(111)
-# cpu_ax.set_ylim(0, 100)
-# cpu_ax.set_xlim(0, 50)
-# cpu_ax.set_xticks([])
-# cpu_ax.set_yticks([0, 50, 100])
-# cpu_ax.set_ylabel('%')
-# cpu_usage = [0]*50
-# cpu_line, = cpu_ax.plot(cpu_usage, lw=2)
-# cpu_canvas = FigureCanvasTkAgg(cpu_fig, master=cpu_frame)
-# cpu_canvas.get_tk_widget().pack(side=tk.LEFT)
-
-# tk.Label(cpu_frame, text="Memory Usage").pack()
-# mem_fig = Figure(figsize=(5, 1.5), dpi=100)
-# mem_ax = mem_fig.add_subplot(111)
-# mem_ax.set_ylim(0, 100)
-# mem_ax.set_xlim(0, 50)
-# mem_ax.set_xticks([])
-# mem_ax.set_yticks([0, 50, 100])
-# mem_ax.set_ylabel('%')
-# mem_usage = [0]*50
-# mem_line, = mem_ax.plot(mem_usage, lw=2)
-# mem_canvas = FigureCanvasTkAgg(mem_fig, master=cpu_frame)
-# mem_canvas.get_tk_widget().pack(side=tk.LEFT)
-
-# def update_cpu_graph()  # Graph updates disabled:
-#    cpu = psutil.cpu_percent(interval=0.1)
-#    mem = psutil.virtual_memory().percent
-#
-#    cpu_usage.append(cpu)
-#    mem_usage.append(mem)
-#
-#    if len(cpu_usage) > 50:
-#        del cpu_usage[0]
-#    if len(mem_usage) > 50:
-#        del mem_usage[0]
-#
-#    cpu_line.set_ydata(cpu_usage)
-#    mem_line.set_ydata(mem_usage)
-#
-#    cpu_canvas.draw()
-#    mem_canvas.draw()
-#    root.after(1000, update_cpu_graph)
-#
-#update_cpu_graph()
-
 log_frame = tk.Frame(root)
 log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 log_text = tk.Text(log_frame, wrap='word', height=10)
