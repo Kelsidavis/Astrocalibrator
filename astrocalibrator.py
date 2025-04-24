@@ -375,7 +375,13 @@ def plate_solve_and_update_header(fits_path):
             else:
                 log_message("Local solver 'ASTAP' not found. Please install it from https://www.hnsky.org/astap.htm and add it to your PATH.")
                 return
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0 or not os.path.exists(fits_path):
+            log_message(f"[ERROR] ASTAP failed with code {result.returncode}")
+            if result.stderr:
+                log_message(f"[STDERR] {result.stderr.strip()}")
+            return
+        log_message(f"[INFO] ASTAP stdout: {result.stdout.strip()}")
         log_message(f"Solved with ASTAP: {os.path.basename(fits_path)}")
 
         result_table = None
