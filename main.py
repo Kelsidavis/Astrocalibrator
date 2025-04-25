@@ -139,14 +139,6 @@ def _calibration_worker():
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
     calibrate_btn.config(state='normal')
     solve_btn.config(state='normal')
-    try:
-        os.startfile(os.path.dirname(zip_path))
-    except Exception as e:
-        log_message(f"⚠️ Failed to open folder: {e}")
-    elapsed = time.time() - start_time
-    log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
-    calibrate_btn.config(state='normal')
-    solve_btn.config(state='normal')
 
 result_queue = queue.Queue()
 
