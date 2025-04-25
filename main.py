@@ -102,14 +102,21 @@ def _calibration_worker():
 
     for filter_name, images in light_images.items():
         for path in images:
-            data = calibrate_image(
+            with fits.open(path) as hdul:
+                light_data = hdul[0].data.astype(float)
+                light_header = hdul[0].header
+
+            calibrated_data = calibrate_image(
                 path,
                 use_master=True,
                 master_dark_path=os.path.join(temp_output_folder, "master_dark.fits") if master_dark is not None else master_dark_path.get(),
                 master_flat_path=os.path.join(temp_output_folder, f"flat_{filter_name}.fits") if filter_name in master_flats else master_flat_path.get(),
                 master_bias_path=os.path.join(temp_output_folder, "master_bias.fits") if master_bias is not None else master_bias_path.get()
             )
-            fits.writeto(os.path.join(temp_output_folder, os.path.basename(path)), data, overwrite=True)
+
+            light_header['CALIB'] = (True, "Frame has been dark and flat calibrated")
+
+            fits.writeto(os.path.join(temp_output_folder, os.path.basename(path)), calibrated_data, header=light_header, overwrite=True)
 
     zip_path = os.path.join(parent_folder, zip_name)
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as archive:
