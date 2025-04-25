@@ -30,7 +30,9 @@ def show_about():
         y = about_window.winfo_pointery() - about_window.y
         about_window.geometry(f"+{x}+{y}")
     about_window = tk.Toplevel(root)
-    about_window.geometry("360x240")  # 20% larger than default 300x200
+    root_x = root.winfo_x()
+    root_y = root.winfo_y()
+    about_window.geometry(f"360x240+{root_x}+{root_y}")  # 20% larger than default 300x200
     about_window.bind('<Button-1>', start_move)
     about_window.bind('<B1-Motion>', do_move)
     about_window.title("About Astrocalibrator")
