@@ -211,20 +211,20 @@ def run_solve_and_calibrate():
         light_files_to_solve = [f for f in light_files if os.path.exists(f)]
         solver_failed = False
         session_set = False
-            try:
+        try:
                 log_message(f"🧪 Solving: {path}")
                 session_name = plate_solve_and_update_header(path, log_message)
                 log_message(f"💡 Returned session name: {session_name}")
                 if session_name and not session_set:
                     session_title_var.set(session_name)
                     session_set = True
-            except FileNotFoundError as fnf_err:
+        except FileNotFoundError as fnf_err:
                 if not solver_failed:
                     import tkinter.messagebox as mb
                     mb.showinfo("Plate Solver Not Found", "The plate solver executable could not be found. Calibration will continue without solving.")
                     solver_failed = True
                 log_message(f"❌ Solver not found: {fnf_err}")
-            except Exception as e:
+        except Exception as e:
                 import traceback
                 log_message(f"💥 Plate solving failed for {path}: {e}/n{traceback.format_exc()}")
 
