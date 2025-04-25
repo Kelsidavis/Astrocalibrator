@@ -1,6 +1,6 @@
 # Astrocalibrator
 
-**Astrocalibrator** is a Python-based GUI tool for astronomers that streamlines the calibration of FITS images. Designed with simplicity and automation in mind, it supports full calibration workflows with optional plate solving and archive packaging.
+**Astrocalibrator** is a Python-based GUI tool for astronomers designed primarily for the archival of FITS data for later scientific processing. It streamlines image calibration while providing organized, compressed outputs for long-term storage. Designed with simplicity and automation in mind, it supports full calibration workflows with optional plate solving and archive packaging.
 
 ## 🚀 Features
 - Graphical interface using Tkinter
