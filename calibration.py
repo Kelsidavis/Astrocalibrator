@@ -1,82 +1,74 @@
-import os
-import numpy as np
 from astropy.io import fits
-from collections import defaultdict
-from datetime import datetime
-from multiprocessing import Pool
+import numpy as np
+import os
 
+def load_fits_data(path):
+    if os.path.exists(path):
+        with fits.open(path) as hdul:
+            return hdul[0].data.astype(np.float32)
+    return None
+
+def calibrate_image(image_path, use_master=False, master_dark_path=None, master_flat_path=None, master_bias_path=None):
+    from gui import master_dark_enabled, master_flat_enabled, master_bias_enabled
+
+    with fits.open(image_path) as hdul:
+        image_data = hdul[0].data.astype(np.float32)
+
+    # Load master calibration files only if enabled via GUI
+    master_bias = load_fits_data(master_bias_path) if use_master and master_bias_enabled.get() and master_bias_path else None
+    master_dark = load_fits_data(master_dark_path) if use_master and master_dark_enabled.get() and master_dark_path else None
+    master_flat = load_fits_data(master_flat_path) if use_master and master_flat_enabled.get() and master_flat_path else None
+
+    # Apply master bias
+    if master_bias is not None:
+        image_data -= master_bias
+
+    # Apply master dark
+    if master_dark is not None:
+        image_data -= master_dark
+
+    # Apply flat correction
+    if master_flat is not None:
+        flat_corrected = master_flat / np.median(master_flat)
+        image_data /= flat_corrected
+
+    return image_data
+
+def create_master_frame(image_list, method='median'):
+    if not image_list:
+        return None
+
+    stack = []
+    for path in image_list:
+        data = load_fits_data(path)
+        if data is not None:
+            stack.append(data)
+
+    if not stack:
+        return None
+
+    if method == 'median':
+        return np.median(stack, axis=0).astype(np.float32)
+    else:
+        return np.mean(stack, axis=0).astype(np.float32)
+
+def save_master_frame(data, header, output_folder, name):
+    output_path = os.path.join(output_folder, f"{name}_master.fits")
+    fits.writeto(output_path, data, header=header, overwrite=True)
+    return output_path
 
 def load_fits_by_filter(file_list):
-    from gui import log_message
+    from collections import defaultdict
     filtered = defaultdict(list)
     for path in file_list:
         try:
-            with fits.open(path) as hdul:
-                hdr = hdul[0].header
-                filter_name = hdr.get('FILTER', 'UNKNOWN')
-                filtered[filter_name].append(path)
-        except Exception as e:
-            log_message(f"Failed to read {path}: {e}")
+            hdr = fits.getheader(path)
+            filter_name = hdr.get('FILTER', 'UNKNOWN')
+            filtered[filter_name].append(path)
+        except Exception:
+            filtered['UNKNOWN'].append(path)
     return filtered
 
-
-def create_master_frame(files, method='median'):
-    from gui import log_message
-    stack = []
-    for path in files:
-        try:
-            with fits.open(path) as hdul:
-                data = hdul[0].data.astype(np.float32)
-                stack.append(data)
-        except Exception as e:
-            log_message(f"Skipping {path}: {e}")
-    if not stack:
-        return None
-    return np.median(stack, axis=0) if method == 'median' else np.mean(stack, axis=0)
-
-
-def save_master_frame(data, header, output_folder, name):
-    output_path = os.path.join(output_folder, f"master_{name}.fits")
-    hdu = fits.PrimaryHDU(data=data, header=header)
-    hdu.writeto(output_path, overwrite=True)
-
-
-def calibrate_image(args):
-    path, master_dark, master_flat, master_dark_flat, output_folder, filter_name = args
-    try:
-        with fits.open(path) as hdul:
-            data = hdul[0].data.astype(np.float32)
-            header = hdul[0].header
-            if master_dark is not None:
-                data -= master_dark
-            if master_flat is not None:
-                data /= master_flat
-            if master_dark_flat is not None:
-                data -= master_dark_flat
-            data = np.clip(data, 0, None)
-            output_path = os.path.join(output_folder, f"cal_{filter_name}_{os.path.basename(path)}")
-            fits.writeto(output_path, data=data, header=header, overwrite=True)
-            return output_path
-    except Exception as e:
-        return f"Error processing {path}: {e}"
-
-
-def run_parallel_calibration(tasks, threads, progress_var=None):
-    from gui import log_message, root
-    from time import time
-    log_message("⚙️ Beginning parallel calibration using multiprocessing...")
-    start_time = time()
-    results = []
-    with Pool(processes=threads) as pool:
-        for i, result in enumerate(pool.imap_unordered(calibrate_image, tasks), 1):
-            results.append(result)
-            if result.startswith("Error"):
-                log_message(result)
-            else:
-                log_message(f"Saved calibrated: {result}")
-            elapsed = time() - start_time
-            eta = (elapsed / i) * (len(tasks) - i) if i > 0 else 0
-            if progress_var:
-                progress_var.set((i / len(tasks)) * 100)
-            root.update_idletasks()
-    return results
+def run_parallel_calibration(light_images, dark_images, flat_images, bias_images, output_folder):
+    # Placeholder: define if using multiprocessing in the future
+    pass

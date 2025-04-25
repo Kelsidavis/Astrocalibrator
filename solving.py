@@ -14,7 +14,10 @@ def plate_solve_and_update_header(fits_path, log_message):
         print("👣 Entered plate_solve_and_update_header()")
 
         cmd = [r"C:\Program Files\astap\astap.exe" if os.path.exists(r"C:\Program Files\astap\astap.exe") else "astap.exe", "-f", fits_path, "-wcs"]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=90)
+        try:
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=90)
+        except FileNotFoundError as e:
+            raise FileNotFoundError("Plate solver executable not found") from e
         print(f"[INFO] ASTAP stdout: {result.stdout.strip()}")
 
         with fits.open(fits_path) as hdul:
@@ -70,3 +73,4 @@ def plate_solve_and_update_header(fits_path, log_message):
     except Exception as e:
         import traceback
         print(f"💥 Fatal crash in plate_solve_and_update_header: {e} {traceback.format_exc()}")
+        raise

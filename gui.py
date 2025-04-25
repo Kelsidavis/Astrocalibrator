@@ -2,6 +2,39 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import os
 import webbrowser
+from urllib.request import urlopen
+from PIL import Image, ImageTk
+import io
+
+# Tooltip helper
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tipwindow = None
+        self.id = None
+        self.widget.bind("<Enter>", self.showtip)
+        self.widget.bind("<Leave>", self.hidetip)
+
+    def showtip(self, event=None):
+        if self.tipwindow or not self.text:
+            return
+        x, y, cx, cy = self.widget.bbox("insert")
+        x = x + self.widget.winfo_rootx() + 25
+        y = y + self.widget.winfo_rooty() + 20
+        self.tipwindow = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry("+%d+%d" % (x, y))
+        label = tk.Label(tw, text=self.text, justify='left',
+                         background="#ffffe0", relief='solid', borderwidth=1,
+                         font=("tahoma", "8", "normal"))
+        label.pack(ipadx=1)
+
+    def hidetip(self, event=None):
+        tw = self.tipwindow
+        self.tipwindow = None
+        if tw:
+            tw.destroy()
 
 def log_message(msg):
     print(msg)
@@ -12,13 +45,16 @@ def log_message(msg):
 
 root = tk.Tk()
 
+# Set custom telescope icon from local file
+try:
+    icon_image = Image.open("icon.png").resize((32, 32))
+    icon_photo = ImageTk.PhotoImage(icon_image)
+    root.iconphoto(False, icon_photo)
+except Exception as e:
+    print(f"Could not load window icon: {e}")
+
 # Add top menu bar
 menubar = tk.Menu(root)
-
-# About menu
-from urllib.request import urlopen
-from PIL import Image, ImageTk
-import io
 
 def show_about():
     def start_move(event):
@@ -29,23 +65,21 @@ def show_about():
         x = about_window.winfo_pointerx() - about_window.x
         y = about_window.winfo_pointery() - about_window.y
         about_window.geometry(f"+{x}+{y}")
+
     about_window = tk.Toplevel(root)
     root_x = root.winfo_x()
     root_y = root.winfo_y()
-    about_window.geometry(f"360x240+{root_x}+{root_y}")  # 20% larger than default 300x200
+    about_window.geometry(f"360x240+{root_x}+{root_y}")
     about_window.bind('<Button-1>', start_move)
     about_window.bind('<B1-Motion>', do_move)
     about_window.title("About Astrocalibrator")
     about_window.resizable(False, False)
 
     try:
-        with urlopen("https://geekastro.dev/Image%20Gallery_files/title.jpg") as u:
-            raw_data = u.read()
-        image = Image.open(io.BytesIO(raw_data))
-        image = image.resize((100, 100))
+        image = Image.open("icon.png").resize((100, 100))
         photo = ImageTk.PhotoImage(image)
         img_label = tk.Label(about_window, image=photo)
-        img_label.image = photo  # Keep reference
+        img_label.image = photo
         img_label.pack(pady=5)
     except Exception as e:
         tk.Label(about_window, text="[Logo could not be loaded]").pack()
@@ -68,12 +102,165 @@ root.title("Astrocalibrator")
 
 session_title_var = tk.StringVar(value="Imaging Session: Unknown")
 session_title_label = tk.Label(root, textvariable=session_title_var, font=("Arial", 14, "bold"), anchor='center')
+ToolTip(session_title_label, "Displays your imaging session title.")
 session_title_label.pack(pady=5)
-
 
 output_folder_var = tk.StringVar()
 max_threads_var = tk.IntVar(value=os.cpu_count())
 progress_var = tk.DoubleVar()
+
+master_dark_path = tk.StringVar()
+master_flat_path = tk.StringVar()
+master_bias_path = tk.StringVar()
+
+master_dark_enabled = tk.BooleanVar()
+master_flat_enabled = tk.BooleanVar()
+master_bias_enabled = tk.BooleanVar()
+
+# Frame selector section
+light_files, dark_files, flat_files, dark_flat_files, bias_files = [], [], [], [], []
+
+def select_files(file_list, label):
+    files = filedialog.askopenfilenames(filetypes=[("FITS files", "*.fits")])
+    if files:
+        file_list.clear()
+        file_list.extend(files)
+        label.config(text=f"{len(files)} files selected")
+
+        if file_list is dark_files:
+            master_dark_enabled.set(False)
+        elif file_list is flat_files:
+            master_flat_enabled.set(False)
+    master_bias_enabled.set(False)        
+# toggle_input_state()  # Removed early call
+
+frame_select_container = tk.LabelFrame(root, text="Select calibration input frames", font=("Arial", 9))
+frame_select_container.pack(pady=10, padx=10, fill='x')
+frame_select_info = tk.Label(frame_select_container, text="Choose the raw light, dark, flat, and dark flat frames to be used for this calibration session.", font=("Arial", 8), wraplength=500, justify='center')
+frame_select_info.pack(pady=(0, 5))
+file_frame = tk.Frame(frame_select_container)
+file_frame.pack()
+
+light_label = tk.Label(file_frame, text="No files")
+dark_label = tk.Label(file_frame, text="No files")
+flat_label = tk.Label(file_frame, text="No files")
+darkflat_label = tk.Label(file_frame, text="No files")
+
+light_btn = tk.Button(file_frame, text="Select Lights", command=lambda: select_files(light_files, light_label))
+ToolTip(light_btn, "Choose light frames — your primary image data.")
+dark_btn = tk.Button(file_frame, text="Select Darks", command=lambda: select_files(dark_files, dark_label))
+ToolTip(dark_btn, "Dark frames: same exposure as lights but with the shutter closed.")
+flat_btn = tk.Button(file_frame, text="Select Flats", command=lambda: select_files(flat_files, flat_label))
+ToolTip(flat_btn, "Flat frames: correct for dust and vignetting in the optical path.")
+darkflat_btn = tk.Button(file_frame, text="Select Dark Flats", command=lambda: select_files(dark_flat_files, darkflat_label))
+ToolTip(darkflat_btn, "Dark flats: same as flats but with shutter closed.")
+
+bias_label = tk.Label(file_frame, text="No files")
+
+bias_btn = tk.Button(file_frame, text="Select Bias Frames", command=lambda: select_files(bias_files, bias_label))
+ToolTip(bias_btn, "Bias frames: very short exposures to measure camera read noise.")
+
+for btn, label in zip([light_btn, dark_btn, flat_btn, darkflat_btn, bias_btn], [light_label, dark_label, flat_label, darkflat_label, bias_label]):
+    row = [light_btn, dark_btn, flat_btn, darkflat_btn, bias_btn].index(btn)
+    btn.grid(row=row, column=0, padx=5, pady=2, sticky='w')
+    label.grid(row=row, column=1, sticky='w')
+
+# Master calibration section
+master_frame_container = tk.LabelFrame(root, text="Or use existing calibration masters", font=("Arial", 9))
+master_frame_container.pack(pady=10, padx=10, fill='x')
+master_frame_info = tk.Label(master_frame_container, text="Enable one or more of the options below to apply pre-generated master calibration files.", font=("Arial", 8), wraplength=500, justify='center')
+master_frame_info.pack(pady=(0, 5))
+check_frame = tk.Frame(master_frame_container)
+check_frame.pack()
+master_frame = tk.Frame(master_frame_container)
+master_frame.pack()
+tk.Checkbutton(check_frame, text="Use Master Dark", variable=master_dark_enabled, command=lambda: toggle_input_state()).pack(side='left', padx=10)
+tk.Checkbutton(check_frame, text="Use Master Flat", variable=master_flat_enabled, command=lambda: toggle_input_state()).pack(side='left', padx=10)
+tk.Checkbutton(check_frame, text="Use Master Bias", variable=master_bias_enabled, command=lambda: toggle_input_state()).pack(side='left', padx=10)
+
+master_dark_btn = tk.Button(master_frame, text="Select Master Dark", command=lambda: browse_file(master_dark_path))
+ToolTip(master_dark_btn, "Use an existing master dark file to subtract thermal noise.")
+master_dark_label = tk.Label(master_frame, textvariable=master_dark_path, wraplength=300)
+master_flat_btn = tk.Button(master_frame, text="Select Master Flat", command=lambda: browse_file(master_flat_path))
+ToolTip(master_flat_btn, "Use a pre-processed flat field for correcting optical artifacts.")
+master_flat_label = tk.Label(master_frame, textvariable=master_flat_path, wraplength=300)
+master_bias_btn = tk.Button(master_frame, text="Select Master Bias", command=lambda: browse_file(master_bias_path))
+ToolTip(master_bias_btn, "Use a master bias frame to correct read noise.")
+master_bias_label = tk.Label(master_frame, textvariable=master_bias_path, wraplength=300)
+
+def toggle_input_state():
+    # Always keep light frames selectable
+    light_btn.config(state=tk.NORMAL)
+
+    # Disable and clear only corresponding frame types if master is enabled
+    if master_dark_enabled.get():
+        dark_btn.config(state=tk.DISABLED)
+        if dark_files:
+            dark_files.clear()
+            dark_label.config(text="No files")
+    else:
+        dark_btn.config(state=tk.NORMAL)
+
+    if master_flat_enabled.get():
+        flat_btn.config(state=tk.DISABLED)
+        if flat_files:
+            flat_files.clear()
+            flat_label.config(text="No files")
+    else:
+        flat_btn.config(state=tk.NORMAL)
+
+    darkflat_btn.config(state=tk.NORMAL)
+
+    if master_bias_enabled.get():
+        bias_btn.config(state=tk.DISABLED)
+        if bias_files:
+            bias_files.clear()
+            bias_label.config(text="No files")
+    else:
+        bias_btn.config(state=tk.NORMAL)
+
+
+
+def update_master_inputs():
+    if master_dark_enabled.get():
+        master_dark_btn.pack(pady=2)
+        master_dark_label.pack()
+    else:
+        master_dark_btn.pack_forget()
+        master_dark_label.pack_forget()
+
+    if master_flat_enabled.get():
+        master_flat_btn.pack(pady=2)
+        master_flat_label.pack()
+    else:
+        master_flat_btn.pack_forget()
+        master_flat_label.pack_forget()
+
+    if master_bias_enabled.get():
+        master_bias_btn.pack(pady=2)
+        master_bias_label.pack()
+    else:
+        master_bias_btn.pack_forget()
+        master_bias_label.pack_forget()
+
+    
+# Reset
+reset_btn = tk.Button(root, text="Reset Options", command=lambda: reset_options())
+ToolTip(reset_btn, "Reset all settings and selections.")
+reset_btn.pack(pady=5)
+
+def reset_options():
+    session_title_var.set("Imaging Session: Unknown")
+    output_folder_var.set("")
+    master_dark_path.set("")
+    master_flat_path.set("")
+    master_bias_path.set("")        
+    master_dark_enabled.set(False)
+    master_flat_enabled.set(False)
+    master_bias_enabled.set(False)
+    toggle_input_state()
+    update_master_inputs()
+    log_textbox.delete('1.0', tk.END)
 
 log_frame = tk.Frame(root)
 log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 10))
@@ -85,8 +272,14 @@ scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
 scrollbar.pack(side='right', fill='y')
 log_textbox.config(yscrollcommand=scrollbar.set)
 
-def select_output_folder():
-    folder = filedialog.askdirectory()
-    if folder:
-        output_folder_var.set(folder)
-        log_message(f"Output directory set: {folder}")
+
+
+def browse_file(var):
+    path = filedialog.askopenfilename(filetypes=[("FITS files", "*.fits")])
+    if path:
+        var.set(path)
+
+# Now call UI initialization after everything is defined
+
+toggle_input_state()
+update_master_inputs()
