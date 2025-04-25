@@ -161,8 +161,10 @@ def run_plate_solving():
     log_message("📅 Starting plate solving in background...")
 
     light_files_to_solve = [f for f in light_files if os.path.exists(f)]
+    solver_failed = False
 
     def solve_worker(path):
+        nonlocal solver_failed
         try:
             log_message(f"🧪 Solving: {path}")
             try:
@@ -209,8 +211,6 @@ def run_solve_and_calibrate():
         light_files_to_solve = [f for f in light_files if os.path.exists(f)]
         solver_failed = False
         session_set = False
-
-        for path in light_files_to_solve:
             try:
                 log_message(f"🧪 Solving: {path}")
                 session_name = plate_solve_and_update_header(path, log_message)
