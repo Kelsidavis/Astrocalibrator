@@ -5,6 +5,7 @@ import webbrowser
 from urllib.request import urlopen
 from PIL import Image, ImageTk
 import io
+from solving import open_pixel_settings_window
 
 # Tooltip helper
 class ToolTip:
@@ -50,16 +51,19 @@ def log_message(msg):
 
 root = tk.Tk()
 
-# Set custom telescope icon from local file
+def set_astap_location():
+    path = filedialog.askopenfilename(title="Select ASTAP Executable", filetypes=[("Executable files", "*.exe")])
+    if path:
+        # TODO: Save the path somewhere
+        print(f"🔧 ASTAP location set: {path}")
+
+# Set custom icon from local file
 try:
     icon_image = Image.open("icon.png").resize((32, 32))
     icon_photo = ImageTk.PhotoImage(icon_image)
     root.iconphoto(False, icon_photo)
 except Exception as e:
     print(f"Could not load window icon: {e}")
-
-# Add top menu bar
-menubar = tk.Menu(root)
 
 def show_about():
     def start_move(event):
@@ -98,11 +102,6 @@ def show_about():
 
     about_window.bind_all("<Button-1>", open_site)
 
-helpmenu = tk.Menu(menubar, tearoff=0)
-helpmenu.add_command(label="About", command=show_about)
-menubar.add_cascade(label="Help", menu=helpmenu)
-
-root.config(menu=menubar)
 root.title("Astrocalibrator")
 
 # Title Frame with Astrocalibrator Icon and Dynamic Session Title
@@ -375,5 +374,22 @@ def browse_file(var):
 
 # Now call UI initialization after everything is defined
 
+# Create top menu bar
+menubar = tk.Menu(root)
+
+# Settings Menu
+settingsmenu = tk.Menu(menubar, tearoff=0)
+settingsmenu.add_command(label="Set ASTAP Location", command=set_astap_location)
+settingsmenu.add_command(label="Pixel Scale Settings", command=open_pixel_settings_window)
+menubar.add_cascade(label="Settings", menu=settingsmenu)
+
+
+# Help Menu
+helpmenu = tk.Menu(menubar, tearoff=0)
+helpmenu.add_command(label="About", command=show_about)
+menubar.add_cascade(label="Help", menu=helpmenu)
+
+# Attach menubar to root window
+root.config(menu=menubar)
 
 root.after(100, toggle_input_state)

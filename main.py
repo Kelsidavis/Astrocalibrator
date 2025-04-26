@@ -23,73 +23,63 @@ from gui import file_frame, light_label, dark_label, flat_label
 from gui import object_description_var, object_distance_var
 from object_info import object_info
 
+from astropy.coordinates import SkyCoord
+from astropy.wcs import WCS
+import astropy.units as u
+
+def find_nearest_known_object(fits_path, catalog):
+    try:
+        ra, dec = None, None
+
+        # Try reading WCS headers first
+        with fits.open(fits_path) as hdul:
+            hdr = hdul[0].header
+            if 'CRVAL1' in hdr and 'CRVAL2' in hdr:
+                ra = hdr['CRVAL1']
+                dec = hdr['CRVAL2']
+                log_message(f"🧭 FITS WCS center: RA={ra:.4f}°, Dec={dec:.4f}°")
+
+        # If WCS headers are missing, try reading the .wcs sidecar file
+        if ra is None or dec is None:
+            wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
+            if os.path.exists(wcs_file):
+                try:
+                    with open(wcs_file, 'r') as f:
+                        lines = f.readlines()
+                        for line in lines:
+                            if 'RA center' in line:
+                                ra = float(line.split(':')[1].strip())
+                            if 'DEC center' in line:
+                                dec = float(line.split(':')[1].strip())
+                    if ra is not None and dec is not None:
+                        log_message(f"🧭 Sidecar WCS center: RA={ra:.4f}°, Dec={dec:.4f}°")
+                except Exception as e:
+                    log_message(f"⚠️ Failed to read sidecar WCS: {e}")
+
+        if ra is not None and dec is not None:
+            solved_coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+
+            closest_object = None
+            min_distance = float('inf')
+
+            for name, (desc, dist, obj_ra, obj_dec) in catalog.items():
+                obj_coord = SkyCoord(ra=obj_ra*u.deg, dec=obj_dec*u.deg, frame='icrs')
+                sep = solved_coord.separation(obj_coord)
+                if sep.degree < min_distance:
+                    min_distance = sep.degree
+                    closest_object = name
+
+            if closest_object and min_distance < 8:  # 8 degrees tolerance
+                return closest_object
+
+    except Exception as e:
+        log_message(f"⚠️ WCS matching failed: {e}")
+
+    return None
+
+
 control_frame = tk.Frame(root)
 control_frame.pack(pady=10)
-
-# Setup Menu
-menubar = tk.Menu(root)
-root.config(menu=menubar)
-
-# Settings Menu
-settings_menu = tk.Menu(menubar, tearoff=0)
-menubar.add_cascade(label="Settings", menu=settings_menu)
-
-def set_astap_location():
-    path = filedialog.askopenfilename(title="Select ASTAP Executable")
-    if path:
-        remember_file('astap_path', path)
-        log_message(f"🔧 ASTAP location set: {path}")
-
-settings_menu.add_command(label="Set ASTAP Location", command=set_astap_location)
-
-# Help Menu
-help_menu = tk.Menu(menubar, tearoff=0)
-menubar.add_cascade(label="Help", menu=help_menu)
-
-def open_readme():
-    import webbrowser
-    webbrowser.open("https://github.com/Kelsidavis/astrocalibrator#readme")
-
-help_menu.add_command(label="View README", command=open_readme)
-help_menu.add_separator()
-
-def open_about():
-    about_window = tk.Toplevel(root)
-    about_window.title("About Astrocalibrator")
-    about_window.resizable(False, False)
-
-    # Position about window near main root window
-    x = root.winfo_x()
-    y = root.winfo_y()
-    about_window.geometry(f"260x360+{x+50}+{y+50}")
-
-    if os.path.exists("icon.png"):
-        icon_img = tk.PhotoImage(file="icon.png")
-        about_window.iconphoto(False, icon_img)
-        small_img = icon_img.subsample(max(1, int(icon_img.width()/128)), max(1, int(icon_img.height()/128)))
-        icon_label = tk.Label(about_window, image=small_img)
-        icon_label.image = small_img
-        icon_label.pack(pady=10)
-
-    text_label = tk.Label(
-        about_window,
-        text="Astrocalibrator v1.0 \n Calibrate and solve astronomical images. \n Created by Kelsi Davis.",
-        justify="center",
-        wraplength=250
-    )
-    text_label.pack(pady=10)
-
-    def open_website():
-        import webbrowser
-        webbrowser.open("https://geekastro.dev")
-
-    link_button = tk.Button(about_window, text="Official Website", command=open_website)
-    link_button.pack(pady=5)
-
-    close_button = tk.Button(about_window, text="Close", command=about_window.destroy)
-    close_button.pack(pady=10)
-
-help_menu.add_command(label="About Astrocalibrator", command=open_about)
 
 # Save Masters + Buttons grouped into frames
 
@@ -187,6 +177,10 @@ def run_plate_solving():
             log_message(f"🧪 Solving: {path}")
             try:
                 session_name = plate_solve_and_update_header(path, log_message)
+                if not session_name:
+                    session_name = find_nearest_known_object(path, object_info)
+                if session_name:
+                    log_message(f"🔭 WCS matching assigned session name: {session_name}")
                 if session_name:
                     session_name_upper = session_name.upper().strip()
                     if session_name_upper.startswith('M') and session_name_upper[1:].isdigit():
@@ -261,19 +255,34 @@ def run_solve_and_calibrate():
             try:
                 log_message(f"🧪 Solving: {path}")
                 session_name = plate_solve_and_update_header(path, log_message)
-                if session_name and session_name.startswith('M') and session_name[1:].isdigit():
-                    session_name = f"Messier {session_name[1:]}"
-                log_message(f"💡 Returned session name: {session_name}")
-                if session_name and not session_set:
-                    session_title_var.set(session_name)
-                    info = object_info.get(session_name)
-                    if info:
-                        object_description_var.set(info[0])
-                        object_distance_var.set(f"Distance: {info[1]}")
+
+                if not session_name:
+                    session_name = find_nearest_known_object(path, object_info)
+                
+                if session_name:
+                    session_name_upper = session_name.upper().strip()
+                    if session_name_upper.startswith('M') and session_name_upper[1:].isdigit():
+                        session_name = f"Messier {session_name_upper[1:]}"
+                    elif session_name_upper.startswith('NGC') and session_name_upper[3:].strip().isdigit():
+                        session_name = f"NGC {session_name_upper[3:].strip()}"
+                    elif session_name_upper.startswith('IC') and session_name_upper[2:].strip().isdigit():
+                        session_name = f"IC {session_name_upper[2:].strip()}"
                     else:
-                        object_description_var.set("No description available")
-                        object_distance_var.set("Unknown distance")
-                    session_set = True
+                        session_name = session_name_upper
+
+                    log_message(f"💡 Returned session name: {session_name}")
+
+                    if session_name and not session_set:
+                        session_title_var.set(session_name)
+                        info = object_info.get(session_name)
+                        if info:
+                            object_description_var.set(info[0])
+                            object_distance_var.set(f"Distance: {info[1]}")
+                        else:
+                            object_description_var.set("No description available")
+                            object_distance_var.set("Unknown distance")
+                        session_set = True
+
 
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
