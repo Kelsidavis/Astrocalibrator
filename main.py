@@ -12,6 +12,7 @@ from astropy.io import fits
 from gui import root, log_message, log_textbox, output_folder_var, progress_var
 from gui import session_title_var, master_dark_path, master_flat_path, master_bias_path
 from gui import master_dark_enabled, master_flat_enabled, master_bias_enabled
+from gui import ToolTip
 from calibration import run_parallel_calibration, load_fits_by_filter, create_master_frame, save_master_frame, calibrate_image
 from solving import plate_solve_and_update_header
 from settings import load_settings, save_settings, remember_file, get_remembered_file
@@ -92,6 +93,7 @@ help_menu.add_command(label="About Astrocalibrator", command=open_about)
 
 save_masters_var = tk.BooleanVar(value=False)
 save_masters_checkbox = tk.Checkbutton(control_frame, text="Save Calibration Masters", variable=save_masters_var)
+ToolTip(save_masters_checkbox, "Save generated master dark, flat, and bias calibration frames for future use.")
 save_masters_checkbox.pack(side='left', padx=10)
 
 progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
@@ -227,6 +229,7 @@ def run_solve_and_calibrate():
     threading.Thread(target=solve_then_calibrate, daemon=True).start()
 
 calibrate_btn = tk.Button(control_frame, text="Solve & Calibrate", command=run_solve_and_calibrate)
+ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using selected masters and settings.")
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used
 
