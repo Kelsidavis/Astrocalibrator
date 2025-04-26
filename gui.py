@@ -289,22 +289,40 @@ def update_master_inputs():
 
     
 # Reset
-reset_btn = tk.Button(root, text="Reset Options", command=lambda: reset_options())
-ToolTip(reset_btn, "Reset all settings and selections.")
-reset_btn.pack(pady=5)
-
 def reset_options():
-    session_title_var.set("Imaging Session: Unknown")
+    session_title_var.set("")
     output_folder_var.set("")
     master_dark_path.set("")
     master_flat_path.set("")
-    master_bias_path.set("")        
+    master_bias_path.set("")
     master_dark_enabled.set(False)
     master_flat_enabled.set(False)
     master_bias_enabled.set(False)
+
+    light_files.clear()
+    dark_files.clear()
+    flat_files.clear()
+    dark_flat_files.clear()
+    bias_files.clear()
+
+    light_label.config(text="No files")
+    dark_label.config(text="No files")
+    flat_label.config(text="No files")
+    darkflat_label.config(text="No files")
+    bias_label.config(text="No files")
+
     toggle_input_state()
     update_master_inputs()
     log_textbox.delete('1.0', tk.END)
+
+    messagebox.showinfo(
+        "Reset Complete",
+        "✅ All settings, selections, and logs have been reset."
+    )
+
+reset_btn = tk.Button(root, text="Reset Options", command=lambda: reset_options())
+ToolTip(reset_btn, "Reset all settings and selections.")
+reset_btn.pack(pady=5)
 
 log_frame = tk.Frame(root)
 log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 10))
