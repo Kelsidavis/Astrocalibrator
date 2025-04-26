@@ -21,16 +21,10 @@ from gui import light_files, dark_files, flat_files, bias_files
 from gui import file_frame, light_label, dark_label, flat_label
 
 from gui import object_description_var, object_distance_var
+from object_info import object_info
 
 control_frame = tk.Frame(root)
 control_frame.pack(pady=10)
-
-object_info = {
-    "Messier 31": ("Andromeda Galaxy", "2.5 million ly"),
-    "Messier 42": ("Orion Nebula", "1,344 ly"),
-    "Messier 51": ("Whirlpool Galaxy", "23 million ly"),
-    "Messier 100": ("Barred Spiral Galaxy in Coma Berenices", "55 million ly"),
-}
 
 # Setup Menu
 menubar = tk.Menu(root)
