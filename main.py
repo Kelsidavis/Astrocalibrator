@@ -187,8 +187,16 @@ def run_plate_solving():
             log_message(f"🧪 Solving: {path}")
             try:
                 session_name = plate_solve_and_update_header(path, log_message)
-                if session_name and session_name.startswith('M') and session_name[1:].isdigit():
-                    session_name = f"Messier {session_name[1:]}"
+                if session_name:
+                    session_name_upper = session_name.upper().strip()
+                    if session_name_upper.startswith('M') and session_name_upper[1:].isdigit():
+                        session_name = f"Messier {session_name_upper[1:]}"
+                    elif session_name_upper.startswith('NGC') and session_name_upper[3:].strip().isdigit():
+                        session_name = f"NGC {session_name_upper[3:].strip()}"
+                    elif session_name_upper.startswith('IC') and session_name_upper[2:].strip().isdigit():
+                        session_name = f"IC {session_name_upper[2:].strip()}"
+                    else:
+                        session_name = session_name_upper
                 log_message(f"💡 Returned session name: {session_name}")
                 result_queue.put(session_name)
             except FileNotFoundError as fnf_err:
@@ -213,9 +221,13 @@ def run_plate_solving():
             session_name = result_queue.get()
             if session_name:
                 session_title_var.set(session_name)
-                info = object_info.get(session_name, ("", ""))
-                object_description_var.set(info[0])
-                object_distance_var.set(f"Distance: {info[1]}" if info[1] else "")
+                info = object_info.get(session_name)
+                if info:
+                    object_description_var.set(info[0])
+                    object_distance_var.set(f"Distance: {info[1]}")
+                else:
+                    object_description_var.set("No description available")
+                    object_distance_var.set("Unknown distance")
             log_message(f"📅 Updated Imaging Session: {session_name}")
 
         if threading.active_count() > 1:
@@ -254,10 +266,15 @@ def run_solve_and_calibrate():
                 log_message(f"💡 Returned session name: {session_name}")
                 if session_name and not session_set:
                     session_title_var.set(session_name)
-                    info = object_info.get(session_name, ("", ""))
-                    object_description_var.set(info[0])
-                    object_distance_var.set(f"Distance: {info[1]}" if info[1] else "")
+                    info = object_info.get(session_name)
+                    if info:
+                        object_description_var.set(info[0])
+                        object_distance_var.set(f"Distance: {info[1]}")
+                    else:
+                        object_description_var.set("No description available")
+                        object_distance_var.set("Unknown distance")
                     session_set = True
+
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
                     import tkinter.messagebox as mb
@@ -266,7 +283,9 @@ def run_solve_and_calibrate():
                 log_message(f"❌ Solver not found: {fnf_err}")
             except Exception as e:
                 import traceback
-                log_message(f"💥 Plate solving failed for {path}: {e} \n {traceback.format_exc()}")
+                log_message(f"💥 Exception in solve_worker: {e}\n{traceback.format_exc()}")
+                session_name = None
+                result_queue.put(session_name)
 
         log_message("⚙️ Plate solving complete. Proceeding to calibration...")
         try:
