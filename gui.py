@@ -193,6 +193,17 @@ def select_files(file_list, label, expected_type=None):
 
                     root.config(cursor="")  # ✅ Restore normal cursor after processing
 
+        # ✅ New behavior: Auto-run plate solving if LIGHT frames selected
+        from main import run_plate_solving
+        if expected_type == "LIGHT":
+            if output_folder_var.get():
+                from main import run_plate_solving  # ✅ Import here safely inside function
+                log_message("🚀 Lights selected. Starting plate solving...")
+                run_plate_solving()
+            else:
+                log_message("⚠️ Please select output folder before plate solving.")
+                messagebox.showwarning("Output Folder Needed", "⚠️ Please select an output folder before plate solving.")
+
                 root.after(0, update_ui)
 
             threading.Thread(target=process_files, daemon=True).start()
