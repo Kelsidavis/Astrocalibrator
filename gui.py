@@ -211,6 +211,12 @@ def select_files(file_list, label, expected_type=None):
     except Exception as e:
         root.config(cursor="")
         raise e
+    
+def update_ui():
+    light_label.config(text=f"{len(light_files)} lights selected")
+    dark_label.config(text=f"{len(dark_files)} darks selected")
+    flat_label.config(text=f"{len(flat_files)} flats selected")
+    bias_label.config(text=f"{len(flat_files)} flats selected")
 
 frame_select_container = tk.LabelFrame(root, text="Select calibration input frames", font=("Arial", 9))
 frame_select_container.pack(pady=10, padx=10, fill='x')

@@ -26,6 +26,8 @@ from object_info import object_info
 from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
 import astropy.units as u
+import tkinter.messagebox as mb
+
 
 def find_nearest_known_object(fits_path, catalog):
     try:
@@ -107,13 +109,6 @@ select_output_btn.pack(side='left', padx=10)
 progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
 progress_bar.pack(fill='x', padx=10, pady=5)
 
-def log_message(msg):
-    print(msg)
-    log_textbox.after(0, lambda: (
-        log_textbox.insert('end', msg + '\n'),
-        log_textbox.see('end')
-    ))
-
 def _calibration_worker():
     import time
     start_time = time.time()
@@ -162,6 +157,7 @@ def run_calibration_pipeline():
     threading.Thread(target=_calibration_worker, daemon=True).start()
 
 def run_plate_solving():
+    result_queue = queue.Queue()
     solve_temp_folder = os.path.join(output_folder_var.get(), "solve_temp")
     os.makedirs(solve_temp_folder, exist_ok=True)
     solve_btn.config(state='disabled')
@@ -180,8 +176,6 @@ def run_plate_solving():
                 if not session_name:
                     session_name = find_nearest_known_object(path, object_info)
                 if session_name:
-                    log_message(f"🔭 WCS matching assigned session name: {session_name}")
-                if session_name:
                     session_name_upper = session_name.upper().strip()
                     if session_name_upper.startswith('M') and session_name_upper[1:].isdigit():
                         session_name = f"Messier {session_name_upper[1:]}"
@@ -195,12 +189,10 @@ def run_plate_solving():
                 result_queue.put(session_name)
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
-                    import tkinter.messagebox as mb
                     mb.showinfo("Plate Solver Not Found", "The plate solver executable could not be found. Calibration will continue without solving.")
                     solver_failed = True
                 log_message(f"❌ Solver not found: {fnf_err}")
-                session_name = None
-                result_queue.put(session_name)
+                result_queue.put(None)
             except Exception as e:
                 import traceback
                 log_message(f"💥 Exception in solve_worker: {e}\n{traceback.format_exc()}")
@@ -210,53 +202,11 @@ def run_plate_solving():
     for path in light_files_to_solve:
         threading.Thread(target=solve_worker, args=(path,), daemon=True).start()
 
-    def check_results():
-        while not result_queue.empty():
-            session_name = result_queue.get()
-            if session_name:
-                session_title_var.set(session_name)
-                info = object_info.get(session_name)
-                if info:
-                    object_description_var.set(info[0])
-                    object_distance_var.set(f"Distance: {info[1]}")
-                else:
-                    object_description_var.set("No description available")
-                    object_distance_var.set("Unknown distance")
-            log_message(f"📅 Updated Imaging Session: {session_name}")
-
-        if threading.active_count() > 1:
-            root.after(500, check_results)
-        else:
-            solve_btn.config(state='normal')
-            calibrate_btn.config(state='normal')
-            log_message(f"✅ Plate solving complete.")
-
-        if threading.active_count() <= 1:
-            try:
-                shutil.rmtree(solve_temp_folder)
-                log_message("🧹 Temporary solve files cleaned up.")
-            except Exception as e:
-                log_message(f"⚠️ Failed to clean solve temp folder: {e}")
-
-    root.after(500, check_results)
-
-def run_solve_and_calibrate():
-    calibrate_btn.config(state='disabled')
-    solve_btn.config(state='disabled')
-
-    def solve_then_calibrate():
-        solve_temp_folder = os.path.join(output_folder_var.get(), "solve_temp")
-        os.makedirs(solve_temp_folder, exist_ok=True)
-        light_files_to_solve = [f for f in light_files if os.path.exists(f)]
-        solver_failed = False
-        session_set = False
-
-        for path in light_files_to_solve:
-            try:
-                log_message(f"🧪 Solving: {path}")
-                session_name = plate_solve_and_update_header(path, log_message)
-
-                if session_name and not session_set:
+    def check_solving_results():
+        try:
+            while True:
+                session_name = result_queue.get_nowait()
+                if session_name:
                     session_title_var.set(session_name)
                     info = object_info.get(session_name)
                     if info:
@@ -265,35 +215,75 @@ def run_solve_and_calibrate():
                     else:
                         object_description_var.set("No description available")
                         object_distance_var.set("Unknown distance")
-                    session_set = True
+                    log_message(f"📅 Updated Imaging Session: {session_name}")
+        except queue.Empty:
+            pass
 
-            except FileNotFoundError as fnf_err:
-                if not solver_failed:
-                    import tkinter.messagebox as mb
-                    mb.showinfo("Plate Solver Not Found", "The plate solver executable could not be found. Calibration will continue without solving.")
-                    solver_failed = True
-                log_message(f"❌ Solver not found: {fnf_err}")
+        worker_threads_alive = any(
+            thread.name.startswith("Thread-") for thread in threading.enumerate() if thread.is_alive()
+        )
+
+        if worker_threads_alive:
+            root.after(500, check_solving_results)
+        else:
+            solve_btn.config(state='normal')
+            calibrate_btn.config(state='normal')
+            log_message(f"✅ Plate solving complete.")
+
+            try:
+                shutil.rmtree(solve_temp_folder)
+                log_message("🧹 Temporary solve files cleaned up.")
             except Exception as e:
-                import traceback
-                log_message(f"💥 Exception in solve_worker: {e}\n{traceback.format_exc()}")
-                session_name = None
-                result_queue.put(session_name)
+                log_message(f"⚠️ Failed to clean solve temp folder: {e}")
 
-        log_message("⚙️ Plate solving complete. Proceeding to calibration...")
-        try:
-            shutil.rmtree(solve_temp_folder)
-            log_message("🧹 Temporary solve files cleaned up.")
-        except Exception as e:
-            log_message(f"⚠️ Failed to clean solve temp folder: {e}")
+    root.after(500, check_solving_results)
 
-        _calibration_worker()
-
-    threading.Thread(target=solve_then_calibrate, daemon=True).start()
-
-calibrate_btn = tk.Button(buttons_frame, text="Solve & Calibrate", command=run_solve_and_calibrate)
+calibrate_btn = tk.Button(buttons_frame, text="Solve & Calibrate")
 ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using selected masters and settings.")
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used
+
+def start_processing():
+    result_queue = queue.Queue()
+
+    def solve_then_calibrate(result_queue):
+        try:
+            solve_images(result_queue)
+            calibrate_images(result_queue)
+        except Exception as e:
+            log_message(f"💥 Exception in solve_then_calibrate: {e}")
+
+    def check_solve_and_calibrate_results(result_queue):
+        try:
+            while True:
+                session_name = result_queue.get_nowait()
+                if session_name:
+                    session_title_var.set(session_name)
+                    info = object_info.get(session_name)
+                    if info:
+                        object_description_var.set(info[0])
+                        object_distance_var.set(f"Distance: {info[1]}")
+                    else:
+                        object_description_var.set("No description available")
+                        object_distance_var.set("Unknown distance")
+                    log_message(f"📅 Updated Imaging Session: {session_name}")
+        except queue.Empty:
+            pass
+
+        if threading.active_count() > 1:
+            root.after(500, check_solve_and_calibrate_results, result_queue)
+        else:
+            solve_btn.config(state='normal')
+            calibrate_btn.config(state='normal')
+            log_message(f"✅ Solve + Calibrate complete.")
+
+    calibrate_btn.config(state='disabled')
+    solve_btn.config(state='disabled')
+
+    threading.Thread(target=solve_then_calibrate, args=(result_queue,), daemon=True).start()
+    root.after(500, check_solve_and_calibrate_results, result_queue)
+
+calibrate_btn.config(command=start_processing)
 
 def debug_widget_list():
     print("\n🧩 Widgets inside file_frame:")
@@ -304,3 +294,4 @@ if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
     root.mainloop()
+
