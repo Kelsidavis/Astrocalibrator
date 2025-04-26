@@ -22,7 +22,6 @@ from gui import file_frame, light_label, dark_label, flat_label
 
 from gui import object_description_var, object_distance_var
 
-
 control_frame = tk.Frame(root)
 control_frame.pack(pady=10)
 
@@ -120,7 +119,6 @@ def select_output_directory():
 select_output_btn = tk.Button(buttons_frame, text="Select Output Folder", command=select_output_directory)
 ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
 select_output_btn.pack(side='left', padx=10)
-
 
 progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
 progress_bar.pack(fill='x', padx=10, pady=5)
@@ -287,7 +285,7 @@ def run_solve_and_calibrate():
 
     threading.Thread(target=solve_then_calibrate, daemon=True).start()
 
-calibrate_btn = tk.Button(control_frame, text="Solve & Calibrate", command=run_solve_and_calibrate)
+calibrate_btn = tk.Button(buttons_frame, text="Solve & Calibrate", command=run_solve_and_calibrate)
 ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using selected masters and settings.")
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used

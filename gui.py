@@ -105,10 +105,21 @@ menubar.add_cascade(label="Help", menu=helpmenu)
 root.config(menu=menubar)
 root.title("Astrocalibrator")
 
-session_title_var = tk.StringVar(value="")
-session_title_label = tk.Label(root, textvariable=session_title_var, font=("Arial", 14, "bold"), anchor='center')
+# Title Frame with Astrocalibrator Icon and Dynamic Session Title
+title_frame = tk.Frame(root)
+title_frame.pack(pady=(10, 5))
+
+if os.path.exists("icon.png"):
+    title_img = Image.open("icon.png").resize((32, 32))
+    title_photo = ImageTk.PhotoImage(title_img)
+    icon_label = tk.Label(title_frame, image=title_photo)
+    icon_label.image = title_photo  # Keep a reference!
+    icon_label.pack(side='left', padx=5)
+
+session_title_var = tk.StringVar(value="Welcome to Astrocalibrator!")
+session_title_label = tk.Label(title_frame, textvariable=session_title_var, font=("Arial", 16, "bold"))
 ToolTip(session_title_label, "Displays the current imaging session name or object being calibrated.")
-session_title_label.pack(pady=5)
+session_title_label.pack(side='left', padx=5)
 
 # Container for session object description and distance
 session_info_frame = tk.Frame(root)
@@ -307,7 +318,7 @@ def update_master_inputs():
     master_flat_path.set("")
     master_bias_path.set("")
     output_folder_var.set("")
-    session_title_var.set("")
+    session_title_var.set("Welcome to Astrocalibrator!")
 
     # Reset master enabled states
     master_dark_enabled.set(False)
