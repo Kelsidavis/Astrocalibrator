@@ -122,6 +122,14 @@ light_files, dark_files, flat_files, dark_flat_files, bias_files = [], [], [], [
 
 from astropy.io import fits
 
+def select_file(path_var):
+    filename = filedialog.askopenfilename(
+        title="Select File",
+        filetypes=[("FITS files", "*.fits"), ("All files", "*.*")]
+    )
+    if filename:
+        path_var.set(filename)
+
 def select_files(file_list, label, expected_type=None):
     validated_files = []  # Always initialize validated_files
     root.update()
@@ -249,6 +257,15 @@ master_flat_label = tk.Label(master_frame, textvariable=master_flat_path, wraple
 master_bias_btn = tk.Button(master_frame, text="Select Master Bias", command=lambda: browse_file(master_bias_path))
 ToolTip(master_bias_btn, "Choose a Master Bias frame to correct for electronic readout noise.")
 master_bias_label = tk.Label(master_frame, textvariable=master_bias_path, wraplength=300)
+
+master_dark_btn.grid(row=0, column=0, sticky='w', padx=5, pady=2)
+master_dark_label.grid(row=0, column=1, sticky='w')
+
+master_flat_btn.grid(row=1, column=0, sticky='w', padx=5, pady=2)
+master_flat_label.grid(row=1, column=1, sticky='w')
+
+master_bias_btn.grid(row=2, column=0, sticky='w', padx=5, pady=2)
+master_bias_label.grid(row=2, column=1, sticky='w')
 
 def toggle_input_state():
     light_btn.config(state=tk.NORMAL)
