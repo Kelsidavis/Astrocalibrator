@@ -18,17 +18,9 @@ from solving import plate_solve_and_update_header
 from settings import load_settings, save_settings, remember_file, get_remembered_file
 
 from gui import light_files, dark_files, flat_files, bias_files
-
-
-
 from gui import file_frame, light_label, dark_label, flat_label
 
-header_frame = tk.Frame(root)
-header_frame.pack(pady=5, fill='x')
-
-session_title_label = tk.Label(header_frame, textvariable=session_title_var, font=("Arial", 14, "bold"), anchor='center')
-session_title_label.pack(pady=2)
-
+from gui import object_description_var, object_distance_var
 
 
 control_frame = tk.Frame(root)
@@ -40,14 +32,6 @@ object_info = {
     "Messier 51": ("Whirlpool Galaxy", "23 million ly"),
     "Messier 100": ("Barred Spiral Galaxy in Coma Berenices", "55 million ly"),
 }
-
-description_label_var = tk.StringVar(value="")
-description_label = tk.Label(root, textvariable=description_label_var, font=("Arial", 10, "italic"), anchor='e', justify='right', fg="gray")
-description_label.pack(fill='x', padx=10)
-
-distance_label_var = tk.StringVar(value="")
-distance_label = tk.Label(root, textvariable=distance_label_var, font=("Arial", 9, "italic"), anchor='e', justify='right', fg="light gray")
-distance_label.pack(fill='x', padx=10)
 
 # Setup Menu
 menubar = tk.Menu(root)
@@ -117,7 +101,17 @@ help_menu.add_command(label="About Astrocalibrator", command=open_about)
 save_masters_var = tk.BooleanVar(value=False)
 save_masters_checkbox = tk.Checkbutton(control_frame, text="Save Calibration Masters", variable=save_masters_var)
 ToolTip(save_masters_checkbox, "Save generated master dark, flat, and bias calibration frames for future use.")
-save_masters_checkbox.pack(side='left', padx=10)
+save_masters_checkbox.pack(side='left', padx=(10, 30))  # Give it wider right padding
+
+def select_output_directory():
+    path = filedialog.askdirectory(title="Select Output Folder")
+    if path:
+        output_folder_var.set(path)
+        log_message(f"📂 Output folder set to: {path}")
+
+select_output_btn = tk.Button(control_frame, text="Select Output Folder", command=select_output_directory)
+ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
+select_output_btn.pack(side='left', padx=(10, 30))
 
 progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
 progress_bar.pack(fill='x', padx=10, pady=5)
@@ -143,6 +137,9 @@ def _calibration_worker():
         return
 
     output_folder = output_folder_var.get()
+    temp_folder = os.path.join(output_folder, "temp")
+    os.makedirs(temp_folder, exist_ok=True)
+
     run_parallel_calibration(
         light_images=light_files,
         dark_images=dark_files,
@@ -154,6 +151,16 @@ def _calibration_worker():
 
     elapsed = time.time() - start_time
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
+
+    if not save_masters_var.get():
+        try:
+            shutil.rmtree(temp_folder)
+            log_message("🧹 Temporary calibration files cleaned up.")
+        except Exception as e:
+            log_message(f"⚠️ Failed to clean temp folder: {e}")
+    else:
+        log_message("💾 Temporary calibration files retained (Save Masters enabled).")
+
     calibrate_btn.config(state='normal')
     solve_btn.config(state='normal')
 
@@ -164,6 +171,8 @@ def run_calibration_pipeline():
     threading.Thread(target=_calibration_worker, daemon=True).start()
 
 def run_plate_solving():
+    solve_temp_folder = os.path.join(output_folder_var.get(), "solve_temp")
+    os.makedirs(solve_temp_folder, exist_ok=True)
     solve_btn.config(state='disabled')
     calibrate_btn.config(state='disabled')
     log_message("📅 Starting plate solving in background...")
@@ -204,8 +213,8 @@ def run_plate_solving():
             if session_name:
                 session_title_var.set(session_name)
                 info = object_info.get(session_name, ("", ""))
-                description_label_var.set(info[0])
-                distance_label_var.set(f"Distance: {info[1]}" if info[1] else "")
+                object_description_var.set(info[0])
+                object_distance_var.set(f"Distance: {info[1]}" if info[1] else "")
             log_message(f"📅 Updated Imaging Session: {session_name}")
 
         if threading.active_count() > 1:
@@ -215,6 +224,13 @@ def run_plate_solving():
             calibrate_btn.config(state='normal')
             log_message(f"✅ Plate solving complete.")
 
+        if threading.active_count() <= 1:
+            try:
+                shutil.rmtree(solve_temp_folder)
+                log_message("🧹 Temporary solve files cleaned up.")
+            except Exception as e:
+                log_message(f"⚠️ Failed to clean solve temp folder: {e}")
+
     root.after(500, check_results)
 
 def run_solve_and_calibrate():
@@ -222,6 +238,8 @@ def run_solve_and_calibrate():
     solve_btn.config(state='disabled')
 
     def solve_then_calibrate():
+        solve_temp_folder = os.path.join(output_folder_var.get(), "solve_temp")
+        os.makedirs(solve_temp_folder, exist_ok=True)
         light_files_to_solve = [f for f in light_files if os.path.exists(f)]
         solver_failed = False
         session_set = False
@@ -236,8 +254,8 @@ def run_solve_and_calibrate():
                 if session_name and not session_set:
                     session_title_var.set(session_name)
                     info = object_info.get(session_name, ("", ""))
-                    description_label_var.set(info[0])
-                    distance_label_var.set(info[1])
+                    object_description_var.set(info[0])
+                    object_distance_var.set(f"Distance: {info[1]}" if info[1] else "")
                     session_set = True
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
@@ -250,6 +268,12 @@ def run_solve_and_calibrate():
                 log_message(f"💥 Plate solving failed for {path}: {e} \n {traceback.format_exc()}")
 
         log_message("⚙️ Plate solving complete. Proceeding to calibration...")
+        try:
+            shutil.rmtree(solve_temp_folder)
+            log_message("🧹 Temporary solve files cleaned up.")
+        except Exception as e:
+            log_message(f"⚠️ Failed to clean solve temp folder: {e}")
+
         _calibration_worker()
 
     threading.Thread(target=solve_then_calibrate, daemon=True).start()

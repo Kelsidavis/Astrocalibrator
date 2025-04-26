@@ -13,8 +13,11 @@ class ToolTip:
         self.text = text
         self.tipwindow = None
         self.id = None
-        self.widget.bind("<Enter>", self.showtip)
+        self.widget.bind("<Enter>", self.schedule_showtip)
         self.widget.bind("<Leave>", self.hidetip)
+
+    def schedule_showtip(self, event=None):
+        self.id = self.widget.after(500, self.showtip)  # Delay tooltip popup
 
     def showtip(self, event=None):
         if self.tipwindow or not self.text:
@@ -31,10 +34,12 @@ class ToolTip:
         label.pack(ipadx=1)
 
     def hidetip(self, event=None):
-        tw = self.tipwindow
-        self.tipwindow = None
-        if tw:
-            tw.destroy()
+        if self.id:
+            self.widget.after_cancel(self.id)
+            self.id = None
+        if self.tipwindow:
+            self.tipwindow.destroy()
+            self.tipwindow = None
 
 def log_message(msg):
     print(msg)
@@ -105,6 +110,20 @@ session_title_label = tk.Label(root, textvariable=session_title_var, font=("Aria
 ToolTip(session_title_label, "Displays the current imaging session name or object being calibrated.")
 session_title_label.pack(pady=5)
 
+# Container for session object description and distance
+session_info_frame = tk.Frame(root)
+session_info_frame.pack(pady=5)
+
+object_description_var = tk.StringVar(value="")
+object_distance_var = tk.StringVar(value="")
+
+description_label = tk.Label(session_info_frame, textvariable=object_description_var, font=("Arial", 9))
+description_label.pack()
+
+distance_label = tk.Label(session_info_frame, textvariable=object_distance_var, font=("Arial", 9))
+distance_label.pack()
+
+
 output_folder_var = tk.StringVar()
 max_threads_var = tk.IntVar(value=os.cpu_count())
 progress_var = tk.DoubleVar()
@@ -130,73 +149,47 @@ def select_file(path_var):
     if filename:
         path_var.set(filename)
 
+import threading
+
 def select_files(file_list, label, expected_type=None):
-    validated_files = []  # Always initialize validated_files
-    root.update()
     try:
-        type_titles = {
-            "LIGHT": "Select Light Frames",
-            "DARK": "Select Dark Frames",
-            "FLAT": "Select Flat Frames",
-            "BIAS": "Select Bias Frames",
-            "DARKFLAT": "Select Dark Flat Frames"
-        }
-        title = type_titles.get(expected_type.upper(), "Select Files") if expected_type else "Select Files"
+        title = f"Select {expected_type.title()}" if expected_type else "Select Files"
         files = filedialog.askopenfilenames(title=title, filetypes=[("FITS files", "*.fits")])
-        root.config(cursor="watch")
-        root.update()
         if files:
-            validated_files = []
-            for f in files:
-                try:
-                    with fits.open(f) as hdul:
-                        header_type = hdul[0].header.get('IMAGETYP', '').upper()
-                        if expected_type:
-                            if expected_type == "DARKFLAT":
-                                if not ("DARK FLAT" in header_type or "DARK" in header_type):
-                                    continue
-                            elif expected_type not in header_type:
-                                continue
-                    validated_files.append(f)
-                except Exception as e:
-                    messagebox.showerror(
-                        "FITS Read Error",
-                        f"""Could not open FITS file:
+            root.config(cursor="watch")
 
-{os.path.basename(f)}
+            def process_files():
+                validated_files = list(files)
+                file_list.clear()
+                file_list.extend(validated_files)
 
-Error: {e}""")
+                def update_ui():
+                    label.config(text=f"{len(validated_files)} {expected_type.title()} Selected" if expected_type else f"{len(validated_files)} files selected")
 
-            if not validated_files:
-                messagebox.showwarning("Frame Validation", f"No valid {expected_type} frames found!")
+                    if expected_type == "DARK":
+                        master_dark_enabled.set(False)
+                    elif expected_type == "FLAT":
+                        master_flat_enabled.set(False)
+                    elif expected_type == "BIAS":
+                        master_bias_enabled.set(False)
+                    elif expected_type == "DARKFLAT":
+                        pass  # Nothing to disable for dark flats
 
-            file_list.clear()
-            file_list.extend(validated_files)
-            label.config(text=f"{len(validated_files)} {expected_type.title()} Selected" if expected_type else f"{len(validated_files)} files selected")
+                    if validated_files:
+                        messagebox.showinfo(
+                            "Selection Complete",
+                            f"{len(validated_files)} {expected_type.title()} selected successfully."
+                        )
 
-            if file_list is dark_files:
-                master_dark_enabled.set(False)
-            elif file_list is flat_files:
-                master_flat_enabled.set(False)
-        master_bias_enabled.set(False)
+                    root.config(cursor="")  # ✅ Restore normal cursor after processing
 
-        if validated_files:
-                type_labels = {
-                    "LIGHT": "Lights",
-                    "DARK": "Darks",
-                    "FLAT": "Flats",
-                    "BIAS": "Bias Frames",
-                    "DARKFLAT": "Dark Flats"
-                }
-                display_type = type_labels.get(expected_type.upper(), expected_type.title() if expected_type else "")
-                messagebox.showinfo(
-                    "Selection Complete",
-                    f"{len(validated_files)} {display_type} selected successfully."
-                )
-    finally:
+                root.after(0, update_ui)
+
+            threading.Thread(target=process_files, daemon=True).start()
+
+    except Exception as e:
         root.config(cursor="")
-        root.update()        
-# toggle_input_state()  # Removed early call
+        raise e
 
 frame_select_container = tk.LabelFrame(root, text="Select calibration input frames", font=("Arial", 9))
 frame_select_container.pack(pady=10, padx=10, fill='x')
@@ -234,29 +227,18 @@ master_frame_container = tk.LabelFrame(root, text="Or use existing calibration m
 master_frame_container.pack(pady=10, padx=10, fill='x')
 master_frame_info = tk.Label(master_frame_container, text="Enable one or more of the options below to apply pre-generated master calibration files.", font=("Arial", 8), wraplength=500, justify='center')
 master_frame_info.pack(pady=(0, 5))
-check_frame = tk.Frame(master_frame_container)
-check_frame.pack()
 master_frame = tk.Frame(master_frame_container)
 master_frame.pack()
-master_dark_check = tk.Checkbutton(check_frame, text="Use Master Dark", variable=master_dark_enabled, command=lambda: toggle_input_state())
-ToolTip(master_dark_check, "Enable using a pre-generated Master Dark frame instead of individual dark frames.")
-master_dark_check.pack(side='left', padx=10)
-master_flat_check = tk.Checkbutton(check_frame, text="Use Master Flat", variable=master_flat_enabled, command=lambda: toggle_input_state())
-ToolTip(master_flat_check, "Enable using a Master Flat frame to correct optical artifacts instead of individual flat frames.")
-master_flat_check.pack(side='left', padx=10)
-master_bias_check = tk.Checkbutton(check_frame, text="Use Master Bias", variable=master_bias_enabled, command=lambda: toggle_input_state())
-ToolTip(master_bias_check, "Enable using a Master Bias frame to correct readout noise instead of individual bias frames.")
-master_bias_check.pack(side='left', padx=10)
 
 master_dark_btn = tk.Button(master_frame, text="Select Master Dark", command=lambda: browse_file(master_dark_path))
 ToolTip(master_dark_btn, "Choose a pre-generated Master Dark frame to subtract thermal noise from your lights.")
-master_dark_label = tk.Label(master_frame, textvariable=master_dark_path, wraplength=300)
+master_dark_label = tk.Label(master_frame, text="No master selected", wraplength=300)
 master_flat_btn = tk.Button(master_frame, text="Select Master Flat", command=lambda: browse_file(master_flat_path))
 ToolTip(master_flat_btn, "Choose a Master Flat frame to correct uneven illumination (vignetting/dust).")
-master_flat_label = tk.Label(master_frame, textvariable=master_flat_path, wraplength=300)
+master_flat_label = tk.Label(master_frame, text="No master selected", wraplength=300)
 master_bias_btn = tk.Button(master_frame, text="Select Master Bias", command=lambda: browse_file(master_bias_path))
 ToolTip(master_bias_btn, "Choose a Master Bias frame to correct for electronic readout noise.")
-master_bias_label = tk.Label(master_frame, textvariable=master_bias_path, wraplength=300)
+master_bias_label = tk.Label(master_frame, text="No master selected", wraplength=300)
 
 master_dark_btn.grid(row=0, column=0, sticky='w', padx=5, pady=2)
 master_dark_label.grid(row=0, column=1, sticky='w')
@@ -270,67 +252,79 @@ master_bias_label.grid(row=2, column=1, sticky='w')
 def toggle_input_state():
     light_btn.config(state=tk.NORMAL)
 
+    if not master_dark_path.get():
+        master_dark_enabled.set(False)
+    if not master_flat_path.get():
+        master_flat_enabled.set(False)
+    if not master_bias_path.get():
+        master_bias_enabled.set(False)
+
     if master_dark_enabled.get() and master_dark_path.get():
         dark_btn.config(state=tk.DISABLED)
-        if dark_files:
-            dark_files.clear()
-            dark_label.config(text="No files")
+        dark_label.config(text="Master Selected")
     else:
         dark_btn.config(state=tk.NORMAL)
+        dark_label.config(text="No files")
 
     if master_flat_enabled.get() and master_flat_path.get():
         flat_btn.config(state=tk.DISABLED)
-        if flat_files:
-            flat_files.clear()
-            flat_label.config(text="No files")
+        flat_label.config(text="Master Selected")
     else:
         flat_btn.config(state=tk.NORMAL)
+        flat_label.config(text="No files")
 
     darkflat_btn.config(state=tk.NORMAL)
 
     if master_bias_enabled.get() and master_bias_path.get():
         bias_btn.config(state=tk.DISABLED)
-        if bias_files:
-            bias_files.clear()
-            bias_label.config(text="No files")
+        bias_label.config(text="Master Selected")
     else:
         bias_btn.config(state=tk.NORMAL)
+        bias_label.config(text="No files")
 
 def update_master_inputs():
+    # Reset visible labels
     light_label.config(text="No files")
     dark_label.config(text="No files")
     flat_label.config(text="No files")
     darkflat_label.config(text="No files")
     bias_label.config(text="No files")
+    object_description_var.set("")
+    object_distance_var.set("")
+    master_dark_label.config(text="No master selected")
+    master_flat_label.config(text="No master selected")
+    master_bias_label.config(text="No master selected")
 
-    master_dark_path.set("")
-    master_flat_path.set("")
-    master_bias_path.set("")
-
-    master_dark_label.config(text="No files")
-    master_flat_label.config(text="No files")
-    master_bias_label.config(text="No files")
-
+    # Clear file lists
     light_files.clear()
     dark_files.clear()
     flat_files.clear()
     dark_flat_files.clear()
     bias_files.clear()
 
+    # Reset internal paths
+    master_dark_path.set("")
+    master_flat_path.set("")
+    master_bias_path.set("")
+    output_folder_var.set("")
+    session_title_var.set("")
+
+    # Reset master enabled states
     master_dark_enabled.set(False)
     master_flat_enabled.set(False)
     master_bias_enabled.set(False)
 
-    session_title_var.set("")
-
-    toggle_input_state()
-
+    # Clear logs
     log_textbox.delete('1.0', tk.END)
 
-    messagebox.showinfo(
+    # 🔥 Now safely toggle input state after everything is cleaned
+    root.after(10, toggle_input_state)
+
+    # 🔥 Slight delay before showing "Reset Complete" message
+    root.after(100, lambda: messagebox.showinfo(
         "Reset Complete",
         "✅ All settings, selections, and logs have been reset."
-    )
+    ))
 
 reset_btn = tk.Button(root, text="Reset Options", command=lambda: update_master_inputs())
 ToolTip(reset_btn, "Clear all selected frames and reset calibration settings to default.")
@@ -352,14 +346,23 @@ def browse_file(var):
     path = filedialog.askopenfilename(title="Select Master Calibration Frame", filetypes=[("FITS files", "*.fits")])
     if path:
         var.set(path)
-        # Update the corresponding label
+        filename = os.path.basename(path)
         if var == master_dark_path:
-            dark_label.config(text="Master Dark selected")
+            master_dark_label.config(text=filename)
+            master_dark_enabled.set(True)
+            dark_label.config(text="Master Selected")
         elif var == master_flat_path:
-            flat_label.config(text="Master Flat selected")
+            master_flat_label.config(text=filename)
+            master_flat_enabled.set(True)
+            flat_label.config(text="Master Selected")
         elif var == master_bias_path:
-            bias_label.config(text="Master Bias selected")
+            master_bias_label.config(text=filename)
+            master_bias_enabled.set(True)
+            bias_label.config(text="Master Selected")
+        toggle_input_state()
+        root.update_idletasks()  # Force immediate redraw here!
 
 # Now call UI initialization after everything is defined
 
-toggle_input_state()
+
+root.after(100, toggle_input_state)
