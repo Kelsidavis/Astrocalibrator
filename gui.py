@@ -100,7 +100,7 @@ menubar.add_cascade(label="Help", menu=helpmenu)
 root.config(menu=menubar)
 root.title("Astrocalibrator")
 
-session_title_var = tk.StringVar(value="Imaging Session: Unknown")
+session_title_var = tk.StringVar(value="")
 session_title_label = tk.Label(root, textvariable=session_title_var, font=("Arial", 14, "bold"), anchor='center')
 ToolTip(session_title_label, "Displays your imaging session title.")
 session_title_label.pack(pady=5)

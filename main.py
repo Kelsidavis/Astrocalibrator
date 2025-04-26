@@ -25,6 +25,71 @@ from gui import file_frame, light_label, dark_label, flat_label
 control_frame = tk.Frame(root)
 control_frame.pack(pady=10)
 
+# Setup Menu
+menubar = tk.Menu(root)
+root.config(menu=menubar)
+
+# Settings Menu
+settings_menu = tk.Menu(menubar, tearoff=0)
+menubar.add_cascade(label="Settings", menu=settings_menu)
+
+def set_astap_location():
+    path = filedialog.askopenfilename(title="Select ASTAP Executable")
+    if path:
+        remember_file('astap_path', path)
+        log_message(f"🔧 ASTAP location set: {path}")
+
+settings_menu.add_command(label="Set ASTAP Location", command=set_astap_location)
+
+# Help Menu
+help_menu = tk.Menu(menubar, tearoff=0)
+menubar.add_cascade(label="Help", menu=help_menu)
+
+def open_readme():
+    import webbrowser
+    webbrowser.open("https://github.com/Kelsidavis/astrocalibrator#readme")
+
+help_menu.add_command(label="View README", command=open_readme)
+help_menu.add_separator()
+
+def open_about():
+    about_window = tk.Toplevel(root)
+    about_window.title("About Astrocalibrator")
+    about_window.resizable(False, False)
+
+    # Position about window near main root window
+    x = root.winfo_x()
+    y = root.winfo_y()
+    about_window.geometry(f"260x360+{x+50}+{y+50}")
+
+    if os.path.exists("icon.png"):
+        icon_img = tk.PhotoImage(file="icon.png")
+        about_window.iconphoto(False, icon_img)
+        small_img = icon_img.subsample(max(1, int(icon_img.width()/128)), max(1, int(icon_img.height()/128)))
+        icon_label = tk.Label(about_window, image=small_img)
+        icon_label.image = small_img
+        icon_label.pack(pady=10)
+
+    text_label = tk.Label(
+        about_window,
+        text="Astrocalibrator v1.0 \n Calibrate and solve astronomical images. \n Created by Kelsi Davis.",
+        justify="center",
+        wraplength=250
+    )
+    text_label.pack(pady=10)
+
+    def open_website():
+        import webbrowser
+        webbrowser.open("https://geekastro.dev")
+
+    link_button = tk.Button(about_window, text="Official Website", command=open_website)
+    link_button.pack(pady=5)
+
+    close_button = tk.Button(about_window, text="Close", command=about_window.destroy)
+    close_button.pack(pady=10)
+
+help_menu.add_command(label="About Astrocalibrator", command=open_about)
+
 save_masters_var = tk.BooleanVar(value=False)
 save_masters_checkbox = tk.Checkbutton(control_frame, text="Save Calibration Masters", variable=save_masters_var)
 save_masters_checkbox.pack(side='left', padx=10)
@@ -130,7 +195,7 @@ def _calibration_worker():
     progress_bar.stop()
     progress_bar.config(mode='determinate')
     progress_var.set(100)
-    log_message(f"📦 Archive created: {zip_path}/n")
+    log_message(f"📦 Archive created: {zip_path} \n ")
     try:
         os.startfile(os.path.dirname(zip_path))
     except Exception as e:
@@ -161,6 +226,8 @@ def run_plate_solving():
             log_message(f"🧪 Solving: {path}")
             try:
                 session_name = plate_solve_and_update_header(path, log_message)
+                if session_name and session_name.startswith('M') and session_name[1:].isdigit():
+                    session_name = f"Messier {session_name[1:]}"
                 log_message(f"💡 Returned session name: {session_name}")
                 result_queue.put(session_name)
             except FileNotFoundError as fnf_err:
@@ -183,7 +250,8 @@ def run_plate_solving():
     def check_results():
         while not result_queue.empty():
             session_name = result_queue.get()
-            session_title_var.set(session_name)
+            if session_name:
+                session_title_var.set(session_name)
             log_message(f"📅 Updated Imaging Session: {session_name}")
 
         if threading.active_count() > 1:
@@ -203,22 +271,24 @@ def run_solve_and_calibrate():
         light_files_to_solve = [f for f in light_files if os.path.exists(f)]
         solver_failed = False
         session_set = False
-        try:
+
+        for path in light_files_to_solve:
+            try:
                 log_message(f"🧪 Solving: {path}")
                 session_name = plate_solve_and_update_header(path, log_message)
                 log_message(f"💡 Returned session name: {session_name}")
                 if session_name and not session_set:
                     session_title_var.set(session_name)
                     session_set = True
-        except FileNotFoundError as fnf_err:
+            except FileNotFoundError as fnf_err:
                 if not solver_failed:
                     import tkinter.messagebox as mb
                     mb.showinfo("Plate Solver Not Found", "The plate solver executable could not be found. Calibration will continue without solving.")
                     solver_failed = True
                 log_message(f"❌ Solver not found: {fnf_err}")
-        except Exception as e:
+            except Exception as e:
                 import traceback
-                log_message(f"💥 Plate solving failed for {path}: {e}/n{traceback.format_exc()}")
+                log_message(f"💥 Plate solving failed for {path}: {e} \n {traceback.format_exc()}")
 
         log_message("⚙️ Plate solving complete. Proceeding to calibration...")
         _calibration_worker()
