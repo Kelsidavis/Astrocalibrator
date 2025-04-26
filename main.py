@@ -256,33 +256,16 @@ def run_solve_and_calibrate():
                 log_message(f"🧪 Solving: {path}")
                 session_name = plate_solve_and_update_header(path, log_message)
 
-                if not session_name:
-                    session_name = find_nearest_known_object(path, object_info)
-                
-                if session_name:
-                    session_name_upper = session_name.upper().strip()
-                    if session_name_upper.startswith('M') and session_name_upper[1:].isdigit():
-                        session_name = f"Messier {session_name_upper[1:]}"
-                    elif session_name_upper.startswith('NGC') and session_name_upper[3:].strip().isdigit():
-                        session_name = f"NGC {session_name_upper[3:].strip()}"
-                    elif session_name_upper.startswith('IC') and session_name_upper[2:].strip().isdigit():
-                        session_name = f"IC {session_name_upper[2:].strip()}"
+                if session_name and not session_set:
+                    session_title_var.set(session_name)
+                    info = object_info.get(session_name)
+                    if info:
+                        object_description_var.set(info[0])
+                        object_distance_var.set(f"Distance: {info[1]}")
                     else:
-                        session_name = session_name_upper
-
-                    log_message(f"💡 Returned session name: {session_name}")
-
-                    if session_name and not session_set:
-                        session_title_var.set(session_name)
-                        info = object_info.get(session_name)
-                        if info:
-                            object_description_var.set(info[0])
-                            object_distance_var.set(f"Distance: {info[1]}")
-                        else:
-                            object_description_var.set("No description available")
-                            object_distance_var.set("Unknown distance")
-                        session_set = True
-
+                        object_description_var.set("No description available")
+                        object_distance_var.set("Unknown distance")
+                    session_set = True
 
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
