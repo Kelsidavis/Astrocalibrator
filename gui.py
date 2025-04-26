@@ -123,20 +123,32 @@ light_files, dark_files, flat_files, dark_flat_files, bias_files = [], [], [], [
 from astropy.io import fits
 
 def select_files(file_list, label, expected_type=None):
-    root.config(cursor="watch")
-    root.update()
     validated_files = []  # Always initialize validated_files
     root.update()
     try:
-        files = filedialog.askopenfilenames(filetypes=[("FITS files", "*.fits")])
+        type_titles = {
+            "LIGHT": "Select Light Frames",
+            "DARK": "Select Dark Frames",
+            "FLAT": "Select Flat Frames",
+            "BIAS": "Select Bias Frames",
+            "DARKFLAT": "Select Dark Flat Frames"
+        }
+        title = type_titles.get(expected_type.upper(), "Select Files") if expected_type else "Select Files"
+        files = filedialog.askopenfilenames(title=title, filetypes=[("FITS files", "*.fits")])
+        root.config(cursor="watch")
+        root.update()
         if files:
             validated_files = []
             for f in files:
                 try:
                     with fits.open(f) as hdul:
                         header_type = hdul[0].header.get('IMAGETYP', '').upper()
-                        if expected_type and expected_type not in header_type:
-                            continue
+                        if expected_type:
+                            if expected_type == "DARKFLAT":
+                                if not ("DARK FLAT" in header_type or "DARK" in header_type):
+                                    continue
+                            elif expected_type not in header_type:
+                                continue
                     validated_files.append(f)
                 except Exception as e:
                     messagebox.showerror(
@@ -196,7 +208,7 @@ dark_btn = tk.Button(file_frame, text="Select Darks", command=lambda: select_fil
 ToolTip(dark_btn, "Select DARK frames: Same exposure as lights but with no light entering the camera.")
 flat_btn = tk.Button(file_frame, text="Select Flats", command=lambda: select_files(flat_files, flat_label, expected_type="FLAT"))
 ToolTip(flat_btn, "Select FLAT frames: Images of uniform light to correct optical system artifacts.")
-darkflat_btn = tk.Button(file_frame, text="Select Dark Flats", command=lambda: select_files(dark_flat_files, darkflat_label, expected_type="DARK"))
+darkflat_btn = tk.Button(file_frame, text="Select Dark Flats", command=lambda: select_files(dark_flat_files, darkflat_label, expected_type="DARKFLAT"))
 ToolTip(darkflat_btn, "Select DARK FLAT frames: Dark exposures matching flat frame settings.")
 
 bias_label = tk.Label(file_frame, text="No files")
@@ -239,11 +251,9 @@ ToolTip(master_bias_btn, "Choose a Master Bias frame to correct for electronic r
 master_bias_label = tk.Label(master_frame, textvariable=master_bias_path, wraplength=300)
 
 def toggle_input_state():
-    # Always keep light frames selectable
     light_btn.config(state=tk.NORMAL)
 
-    # Disable and clear only corresponding frame types if master is enabled
-    if master_dark_enabled.get():
+    if master_dark_enabled.get() and master_dark_path.get():
         dark_btn.config(state=tk.DISABLED)
         if dark_files:
             dark_files.clear()
@@ -251,7 +261,7 @@ def toggle_input_state():
     else:
         dark_btn.config(state=tk.NORMAL)
 
-    if master_flat_enabled.get():
+    if master_flat_enabled.get() and master_flat_path.get():
         flat_btn.config(state=tk.DISABLED)
         if flat_files:
             flat_files.clear()
@@ -261,7 +271,7 @@ def toggle_input_state():
 
     darkflat_btn.config(state=tk.NORMAL)
 
-    if master_bias_enabled.get():
+    if master_bias_enabled.get() and master_bias_path.get():
         bias_btn.config(state=tk.DISABLED)
         if bias_files:
             bias_files.clear()
@@ -269,41 +279,20 @@ def toggle_input_state():
     else:
         bias_btn.config(state=tk.NORMAL)
 
-
-
 def update_master_inputs():
-    if master_dark_enabled.get():
-        master_dark_btn.pack(pady=2)
-        master_dark_label.pack()
-    else:
-        master_dark_btn.pack_forget()
-        master_dark_label.pack_forget()
+    light_label.config(text="No files")
+    dark_label.config(text="No files")
+    flat_label.config(text="No files")
+    darkflat_label.config(text="No files")
+    bias_label.config(text="No files")
 
-    if master_flat_enabled.get():
-        master_flat_btn.pack(pady=2)
-        master_flat_label.pack()
-    else:
-        master_flat_btn.pack_forget()
-        master_flat_label.pack_forget()
-
-    if master_bias_enabled.get():
-        master_bias_btn.pack(pady=2)
-        master_bias_label.pack()
-    else:
-        master_bias_btn.pack_forget()
-        master_bias_label.pack_forget()
-
-    
-# Reset
-def reset_options():
-    session_title_var.set("")
-    output_folder_var.set("")
     master_dark_path.set("")
     master_flat_path.set("")
     master_bias_path.set("")
-    master_dark_enabled.set(False)
-    master_flat_enabled.set(False)
-    master_bias_enabled.set(False)
+
+    master_dark_label.config(text="No files")
+    master_flat_label.config(text="No files")
+    master_bias_label.config(text="No files")
 
     light_files.clear()
     dark_files.clear()
@@ -311,14 +300,14 @@ def reset_options():
     dark_flat_files.clear()
     bias_files.clear()
 
-    light_label.config(text="No files")
-    dark_label.config(text="No files")
-    flat_label.config(text="No files")
-    darkflat_label.config(text="No files")
-    bias_label.config(text="No files")
+    master_dark_enabled.set(False)
+    master_flat_enabled.set(False)
+    master_bias_enabled.set(False)
+
+    session_title_var.set("")
 
     toggle_input_state()
-    update_master_inputs()
+
     log_textbox.delete('1.0', tk.END)
 
     messagebox.showinfo(
@@ -326,7 +315,7 @@ def reset_options():
         "✅ All settings, selections, and logs have been reset."
     )
 
-reset_btn = tk.Button(root, text="Reset Options", command=lambda: reset_options())
+reset_btn = tk.Button(root, text="Reset Options", command=lambda: update_master_inputs())
 ToolTip(reset_btn, "Clear all selected frames and reset calibration settings to default.")
 reset_btn.pack(pady=5)
 
@@ -343,11 +332,17 @@ log_textbox.config(yscrollcommand=scrollbar.set)
 
 
 def browse_file(var):
-    path = filedialog.askopenfilename(filetypes=[("FITS files", "*.fits")])
+    path = filedialog.askopenfilename(title="Select Master Calibration Frame", filetypes=[("FITS files", "*.fits")])
     if path:
         var.set(path)
+        # Update the corresponding label
+        if var == master_dark_path:
+            dark_label.config(text="Master Dark selected")
+        elif var == master_flat_path:
+            flat_label.config(text="Master Flat selected")
+        elif var == master_bias_path:
+            bias_label.config(text="Master Bias selected")
 
 # Now call UI initialization after everything is defined
 
 toggle_input_state()
-update_master_inputs()

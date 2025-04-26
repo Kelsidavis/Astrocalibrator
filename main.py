@@ -23,8 +23,31 @@ from gui import light_files, dark_files, flat_files, bias_files
 
 from gui import file_frame, light_label, dark_label, flat_label
 
+header_frame = tk.Frame(root)
+header_frame.pack(pady=5, fill='x')
+
+session_title_label = tk.Label(header_frame, textvariable=session_title_var, font=("Arial", 14, "bold"), anchor='center')
+session_title_label.pack(pady=2)
+
+
+
 control_frame = tk.Frame(root)
 control_frame.pack(pady=10)
+
+object_info = {
+    "Messier 31": ("Andromeda Galaxy", "2.5 million ly"),
+    "Messier 42": ("Orion Nebula", "1,344 ly"),
+    "Messier 51": ("Whirlpool Galaxy", "23 million ly"),
+    "Messier 100": ("Barred Spiral Galaxy in Coma Berenices", "55 million ly"),
+}
+
+description_label_var = tk.StringVar(value="")
+description_label = tk.Label(root, textvariable=description_label_var, font=("Arial", 10, "italic"), anchor='e', justify='right', fg="gray")
+description_label.pack(fill='x', padx=10)
+
+distance_label_var = tk.StringVar(value="")
+distance_label = tk.Label(root, textvariable=distance_label_var, font=("Arial", 9, "italic"), anchor='e', justify='right', fg="light gray")
+distance_label.pack(fill='x', padx=10)
 
 # Setup Menu
 menubar = tk.Menu(root)
@@ -112,12 +135,7 @@ def _calibration_worker():
     log_message(f"📅 Session: {session_title_var.get()}")
     method = 'median'
 
-    light_images = load_fits_by_filter(light_files)
-    dark_images = load_fits_by_filter(dark_files)
-    flat_images = load_fits_by_filter(flat_files)
-    bias_images = load_fits_by_filter(bias_files)
-
-    first_light_path = next(iter(next(iter(light_images.values()))), None)
+    first_light_path = next(iter(light_files), None)
     if not first_light_path:
         log_message("❌ No light frames found.")
         calibrate_btn.config(state='normal')
@@ -185,6 +203,9 @@ def run_plate_solving():
             session_name = result_queue.get()
             if session_name:
                 session_title_var.set(session_name)
+                info = object_info.get(session_name, ("", ""))
+                description_label_var.set(info[0])
+                distance_label_var.set(f"Distance: {info[1]}" if info[1] else "")
             log_message(f"📅 Updated Imaging Session: {session_name}")
 
         if threading.active_count() > 1:
@@ -209,9 +230,14 @@ def run_solve_and_calibrate():
             try:
                 log_message(f"🧪 Solving: {path}")
                 session_name = plate_solve_and_update_header(path, log_message)
+                if session_name and session_name.startswith('M') and session_name[1:].isdigit():
+                    session_name = f"Messier {session_name[1:]}"
                 log_message(f"💡 Returned session name: {session_name}")
                 if session_name and not session_set:
                     session_title_var.set(session_name)
+                    info = object_info.get(session_name, ("", ""))
+                    description_label_var.set(info[0])
+                    distance_label_var.set(info[1])
                     session_set = True
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
