@@ -118,96 +118,27 @@ def _calibration_worker():
     first_light_path = next(iter(next(iter(light_images.values()))), None)
     if not first_light_path:
         log_message("❌ No light frames found.")
+        calibrate_btn.config(state='normal')
+        solve_btn.config(state='normal')
         return
 
-    parent_folder = os.path.abspath(os.path.join(os.path.dirname(first_light_path), os.pardir))
-    header = fits.getheader(first_light_path)
-    object_name = session_title_var.get().replace(' ', '_').replace(':', '_') or 'UnknownObject'
-    date_obs = header.get('DATE-OBS', datetime.now().strftime('%Y-%m-%d')).replace(':', '-').split('T')[0]
-    zip_name = f"{object_name}_{date_obs}.zip"
-    temp_output_folder = os.path.join(parent_folder, f"_temp_calib_{object_name}_{date_obs}")
-    os.makedirs(temp_output_folder, exist_ok=True)
+    output_folder = output_folder_var.get()
+    run_parallel_calibration(
+        light_images=light_files,
+        dark_images=dark_files,
+        flat_images=flat_files,
+        bias_images=bias_files,
+        output_folder=output_folder,
+        session_title=session_title_var.get()
+    )
 
-    master_dark = None
-    master_bias = None
-    master_flats = {}
-
-    if save_masters_var.get():
-        log_message("💾 Saving master calibration frames...")
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            if dark_files:
-                master_dark = create_master_frame(dark_files, method)
-                save_master_frame(master_dark, fits.getheader(dark_files[0]), temp_output_folder, "master_dark")
-
-            if bias_files:
-                master_bias = create_master_frame(bias_files, method)
-                save_master_frame(master_bias, fits.getheader(bias_files[0]), temp_output_folder, "master_bias")
-
-            if flat_images:
-                corrected_flats = {}
-                for f, images in flat_images.items():
-                    corrected_flats[f] = []
-                    for path in images:
-                        with fits.open(path) as hdul:
-                            data = hdul[0].data.astype(float)
-                            if master_bias is not None:
-                                data -= master_bias
-                            if master_dark is not None:
-                                data -= master_dark
-                            corrected_flats[f].append(data)
-
-                master_flats = dict(executor.map(lambda f: (f, create_master_frame(corrected_flats[f], method)), corrected_flats))
-                for f, data in master_flats.items():
-                    save_master_frame(data, fits.getheader(flat_images[f][0]), temp_output_folder, f"flat_{f}")
-
-    log_message("🔧 Calibrating light frames...")
-
-    progress_bar.config(mode='indeterminate')
-    progress_bar.start()
-
-    for filter_name, images in light_images.items():
-        for path in images:
-            with fits.open(path) as hdul:
-                light_data = hdul[0].data.astype(float)
-                light_header = hdul[0].header
-
-            calibrated_data = calibrate_image(
-                path,
-                use_master=True,
-                master_dark_path=os.path.join(temp_output_folder, "master_dark.fits") if master_dark is not None else master_dark_path.get(),
-                master_flat_path=os.path.join(temp_output_folder, f"flat_{filter_name}.fits") if filter_name in master_flats else master_flat_path.get(),
-                master_bias_path=os.path.join(temp_output_folder, "master_bias.fits") if master_bias is not None else master_bias_path.get()
-            )
-
-            light_header['CALIB'] = (True, "Frame has been dark and flat calibrated")
-
-            fits.writeto(os.path.join(temp_output_folder, os.path.basename(path)), calibrated_data, header=light_header, overwrite=True)
-
-    zip_path = os.path.join(parent_folder, zip_name)
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for root_dir, _, files in os.walk(temp_output_folder):
-            for file in files:
-                full_path = os.path.join(root_dir, file)
-                arcname = os.path.relpath(full_path, temp_output_folder)
-                archive.write(full_path, arcname)
-
-    shutil.rmtree(temp_output_folder)
-    progress_bar.stop()
-    progress_bar.config(mode='determinate')
-    progress_var.set(100)
-    log_message(f"📦 Archive created: {zip_path} \n ")
-    try:
-        os.startfile(os.path.dirname(zip_path))
-    except Exception as e:
-        log_message(f"⚠️ Failed to open folder: {e}")
     elapsed = time.time() - start_time
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
     calibrate_btn.config(state='normal')
     solve_btn.config(state='normal')
 
-result_queue = queue.Queue()
-
 def run_calibration_pipeline():
+
     calibrate_btn.config(state='disabled')
     solve_btn.config(state='disabled')
     threading.Thread(target=_calibration_worker, daemon=True).start()

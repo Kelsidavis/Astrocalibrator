@@ -120,18 +120,62 @@ master_bias_enabled = tk.BooleanVar()
 # Frame selector section
 light_files, dark_files, flat_files, dark_flat_files, bias_files = [], [], [], [], []
 
-def select_files(file_list, label):
-    files = filedialog.askopenfilenames(filetypes=[("FITS files", "*.fits")])
-    if files:
-        file_list.clear()
-        file_list.extend(files)
-        label.config(text=f"{len(files)} files selected")
+from astropy.io import fits
 
-        if file_list is dark_files:
-            master_dark_enabled.set(False)
-        elif file_list is flat_files:
-            master_flat_enabled.set(False)
-    master_bias_enabled.set(False)        
+def select_files(file_list, label, expected_type=None):
+    root.config(cursor="watch")
+    root.update()
+    validated_files = []  # Always initialize validated_files
+    root.update()
+    try:
+        files = filedialog.askopenfilenames(filetypes=[("FITS files", "*.fits")])
+        if files:
+            validated_files = []
+            for f in files:
+                try:
+                    with fits.open(f) as hdul:
+                        header_type = hdul[0].header.get('IMAGETYP', '').upper()
+                        if expected_type and expected_type not in header_type:
+                            continue
+                    validated_files.append(f)
+                except Exception as e:
+                    messagebox.showerror(
+                        "FITS Read Error",
+                        f"""Could not open FITS file:
+
+{os.path.basename(f)}
+
+Error: {e}""")
+
+            if not validated_files:
+                messagebox.showwarning("Frame Validation", f"No valid {expected_type} frames found!")
+
+            file_list.clear()
+            file_list.extend(validated_files)
+            label.config(text=f"{len(validated_files)} {expected_type.title()} Selected" if expected_type else f"{len(validated_files)} files selected")
+
+            if file_list is dark_files:
+                master_dark_enabled.set(False)
+            elif file_list is flat_files:
+                master_flat_enabled.set(False)
+        master_bias_enabled.set(False)
+
+        if validated_files:
+                type_labels = {
+                    "LIGHT": "Lights",
+                    "DARK": "Darks",
+                    "FLAT": "Flats",
+                    "BIAS": "Bias Frames",
+                    "DARKFLAT": "Dark Flats"
+                }
+                display_type = type_labels.get(expected_type.upper(), expected_type.title() if expected_type else "")
+                messagebox.showinfo(
+                    "Selection Complete",
+                    f"{len(validated_files)} {display_type} selected successfully."
+                )
+    finally:
+        root.config(cursor="")
+        root.update()        
 # toggle_input_state()  # Removed early call
 
 frame_select_container = tk.LabelFrame(root, text="Select calibration input frames", font=("Arial", 9))
@@ -146,18 +190,18 @@ dark_label = tk.Label(file_frame, text="No files")
 flat_label = tk.Label(file_frame, text="No files")
 darkflat_label = tk.Label(file_frame, text="No files")
 
-light_btn = tk.Button(file_frame, text="Select Lights", command=lambda: select_files(light_files, light_label))
+light_btn = tk.Button(file_frame, text="Select Lights", command=lambda: select_files(light_files, light_label, expected_type="LIGHT"))
 ToolTip(light_btn, "Choose light frames — your primary image data.")
-dark_btn = tk.Button(file_frame, text="Select Darks", command=lambda: select_files(dark_files, dark_label))
+dark_btn = tk.Button(file_frame, text="Select Darks", command=lambda: select_files(dark_files, dark_label, expected_type="DARK"))
 ToolTip(dark_btn, "Dark frames: same exposure as lights but with the shutter closed.")
-flat_btn = tk.Button(file_frame, text="Select Flats", command=lambda: select_files(flat_files, flat_label))
+flat_btn = tk.Button(file_frame, text="Select Flats", command=lambda: select_files(flat_files, flat_label, expected_type="FLAT"))
 ToolTip(flat_btn, "Flat frames: correct for dust and vignetting in the optical path.")
-darkflat_btn = tk.Button(file_frame, text="Select Dark Flats", command=lambda: select_files(dark_flat_files, darkflat_label))
+darkflat_btn = tk.Button(file_frame, text="Select Dark Flats", command=lambda: select_files(dark_flat_files, darkflat_label, expected_type="DARK"))
 ToolTip(darkflat_btn, "Dark flats: same as flats but with shutter closed.")
 
 bias_label = tk.Label(file_frame, text="No files")
 
-bias_btn = tk.Button(file_frame, text="Select Bias Frames", command=lambda: select_files(bias_files, bias_label))
+bias_btn = tk.Button(file_frame, text="Select Bias Frames", command=lambda: select_files(bias_files, bias_label, expected_type="BIAS"))
 ToolTip(bias_btn, "Bias frames: very short exposures to measure camera read noise.")
 
 for btn, label in zip([light_btn, dark_btn, flat_btn, darkflat_btn, bias_btn], [light_label, dark_label, flat_label, darkflat_label, bias_label]):
