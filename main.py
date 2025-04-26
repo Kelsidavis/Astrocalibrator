@@ -98,10 +98,18 @@ def open_about():
 
 help_menu.add_command(label="About Astrocalibrator", command=open_about)
 
+# Save Masters + Buttons grouped into frames
+
+save_masters_frame = tk.Frame(control_frame)
+save_masters_frame.pack(side='left', padx=(10, 50))
+
 save_masters_var = tk.BooleanVar(value=False)
-save_masters_checkbox = tk.Checkbutton(control_frame, text="Save Calibration Masters", variable=save_masters_var)
+save_masters_checkbox = tk.Checkbutton(save_masters_frame, text="Save Calibration Masters", variable=save_masters_var)
 ToolTip(save_masters_checkbox, "Save generated master dark, flat, and bias calibration frames for future use.")
-save_masters_checkbox.pack(side='left', padx=(10, 30))  # Give it wider right padding
+save_masters_checkbox.pack()
+
+buttons_frame = tk.Frame(control_frame)
+buttons_frame.pack(side='left', padx=10)
 
 def select_output_directory():
     path = filedialog.askdirectory(title="Select Output Folder")
@@ -109,9 +117,10 @@ def select_output_directory():
         output_folder_var.set(path)
         log_message(f"📂 Output folder set to: {path}")
 
-select_output_btn = tk.Button(control_frame, text="Select Output Folder", command=select_output_directory)
+select_output_btn = tk.Button(buttons_frame, text="Select Output Folder", command=select_output_directory)
 ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
-select_output_btn.pack(side='left', padx=(10, 30))
+select_output_btn.pack(side='left', padx=10)
+
 
 progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
 progress_bar.pack(fill='x', padx=10, pady=5)
