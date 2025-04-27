@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import ttk
 from tkinter import filedialog
 import os
 import shutil
@@ -30,6 +31,16 @@ from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
+
+# Configure a custom Progressbar style to make it visible
+style = ttk.Style()
+style.theme_use('default')
+style.configure(
+    "TProgressbar",
+    thickness=20,               # Make it thicker
+    troughcolor="#333333",       # Dark background
+    background="#4CAF50"         # Green moving bar
+)
 
 def generate_fallback_name(header=None):
     date_stamp = datetime.now().strftime("%Y-%m-%d")
@@ -173,7 +184,7 @@ ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using sel
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used
 
-progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100, mode="indeterminate")
+progress_bar = ttk.Progressbar(root, variable=progress_var, maximum=100, mode="indeterminate", style="TProgressbar")
 progress_bar.pack(fill='x', padx=10, pady=5)
 
 def _calibration_worker():

@@ -82,6 +82,22 @@ def load_fits_by_filter(file_list):
             filtered['UNKNOWN'].append(path)
     return filtered
 
+def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bias_path, calibrated_folder):
+    calibrated_data = calibrate_image(
+        light_path,
+        use_master=True,
+        master_dark_path=master_dark_path,
+        master_flat_path=master_flat_path,
+        master_bias_path=master_bias_path
+    )
+
+    header = fits.getheader(light_path)
+    base_name = os.path.basename(light_path)
+    output_path = os.path.join(calibrated_folder, f"cal_{base_name}")
+
+    fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
+    return output_path
+
 def run_parallel_calibration(light_images, dark_images, flat_images, bias_images, output_folder, session_title="UnknownObject", log_callback=None):
     if log_callback is None:
         log_callback = print  # fallback if no logger passed
@@ -128,24 +144,17 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
 
     log_callback(f"🔧 Starting calibration of {len(light_images)} light frames...")
 
-    def calibrate_and_save(light_path):
-        calibrated_data = calibrate_image(
-            light_path,
-            use_master=True,
-            master_dark_path=master_dark_path,
-            master_flat_path=master_flat_path,
-            master_bias_path=master_bias_path
-        )
-
-        header = fits.getheader(light_path)
-        base_name = os.path.basename(light_path)
-        output_path = os.path.join(calibrated_folder, f"cal_{base_name}")
-
-        fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
-        return output_path
-
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = [executor.submit(calibrate_and_save, light_path) for light_path in light_images]
+        futures = [
+            executor.submit(
+                calibrate_and_save,
+                light_path,
+                master_dark_path,
+                master_flat_path,
+                master_bias_path,
+                calibrated_folder
+            ) for light_path in light_images
+        ]
 
         completed = 0
         total = len(futures)
