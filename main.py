@@ -287,6 +287,7 @@ def run_plate_solving():
             while True:
                 session_name = result_queue.get_nowait()
                 if session_name:
+                    session_name = session_name.strip().title()
                     session_title_var.set(session_name)
                     info = object_info.get(session_name)
                     if info:
