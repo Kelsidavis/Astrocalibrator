@@ -170,13 +170,14 @@ ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using sel
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used
 
-progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
+progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100, mode="determinate")
 progress_bar.pack(fill='x', padx=10, pady=5)
 
 def _calibration_worker():
     import time
     start_time = time.time()
-    log_message(f"📅 Session: {session_title_var.get()}")
+    progress_bar.config(mode="indeterminate")
+    progress_bar.start(10)  # move every 10ms
     method = 'median'
 
     first_light_path = next(iter(light_files), None)
@@ -212,6 +213,10 @@ def _calibration_worker():
     else:
         log_message("💾 Temporary calibration files retained (Save Masters enabled).")
 
+    progress_bar.stop()
+    progress_bar.config(mode="determinate")
+    progress_var.set(100)
+
     calibrate_btn.config(state='normal')
     solve_btn.config(state='normal')
 
@@ -228,6 +233,8 @@ def run_plate_solving():
     solve_btn.config(state='disabled')
     calibrate_btn.config(state='disabled')
     log_message("📅 Starting plate solving in background...")
+    progress_bar.config(mode="indeterminate")
+    progress_bar.start(10)
 
     print(f"💬 light_files from GUI: {light_files}")
     light_files_to_solve = [f for f in light_files if os.path.exists(f)]
@@ -301,6 +308,10 @@ def run_plate_solving():
         else:
             solve_btn.config(state='normal')
             calibrate_btn.config(state='normal')
+            progress_bar.stop()
+            progress_bar.config(mode="determinate")
+            progress_var.set(100)
+
             log_message(f"✅ Plate solving complete.")
 
             # Pick the most common session name after solving
