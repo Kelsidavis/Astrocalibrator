@@ -82,33 +82,42 @@ def load_fits_by_filter(file_list):
             filtered['UNKNOWN'].append(path)
     return filtered
 
-def run_parallel_calibration(light_images, dark_images, flat_images, bias_images, output_folder, session_title="UnknownObject"):
+def run_parallel_calibration(light_images, dark_images, flat_images, bias_images, output_folder, session_title="UnknownObject", log_callback=None):
+    if log_callback is None:
+        log_callback = print  # fallback if no logger passed
+
     master_dark = None
     master_flat = None
     master_bias = None
     master_dark_flat = None
 
+    log_callback("🛠️ Starting master calibration frame creation...")
+
     if bias_images:
         master_bias = create_master_frame(bias_images)
         if master_bias is not None:
             save_master_frame(master_bias, fits.getheader(bias_images[0]), output_folder, "master_bias")
+            log_callback(f"💾 Master Bias created from {len(bias_images)} files.")
 
     if dark_images:
         master_dark = create_master_frame(dark_images)
         if master_dark is not None:
             save_master_frame(master_dark, fits.getheader(dark_images[0]), output_folder, "master_dark")
+            log_callback(f"💾 Master Dark created from {len(dark_images)} files.")
 
     dark_flat_images = [img for img in dark_images if 'flat' in img.lower()]
     if dark_flat_images:
         master_dark_flat = create_master_frame(dark_flat_images)
         if master_dark_flat is not None:
             save_master_frame(master_dark_flat, fits.getheader(dark_flat_images[0]), output_folder, "master_dark_flat")
+            log_callback(f"💾 Master Dark-Flat created from {len(dark_flat_images)} files.")
 
     if flat_images:
         dark_flat_path = os.path.join(output_folder, "master_dark_flat_master.fits") if master_dark_flat is not None else None
         master_flat = create_master_frame(flat_images, method='median', dark_flat_path=dark_flat_path)
         if master_flat is not None:
             save_master_frame(master_flat, fits.getheader(flat_images[0]), output_folder, "master_flat")
+            log_callback(f"💾 Master Flat created from {len(flat_images)} files.")
 
     master_dark_path = os.path.join(output_folder, "master_dark_master.fits") if master_dark is not None else None
     master_flat_path = os.path.join(output_folder, "master_flat_master.fits") if master_flat is not None else None
@@ -116,6 +125,8 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
 
     calibrated_folder = os.path.join(output_folder, "calibrated")
     os.makedirs(calibrated_folder, exist_ok=True)
+
+    log_callback(f"🔧 Starting calibration of {len(light_images)} light frames...")
 
     def calibrate_and_save(light_path):
         calibrated_data = calibrate_image(
@@ -136,12 +147,18 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
     with concurrent.futures.ProcessPoolExecutor() as executor:
         futures = [executor.submit(calibrate_and_save, light_path) for light_path in light_images]
 
+        completed = 0
+        total = len(futures)
         for future in concurrent.futures.as_completed(futures):
             try:
                 result = future.result()
-                print(f"✅ Calibrated and saved: {result}")
+                completed += 1
+                if completed % 5 == 0 or completed == total:
+                    log_callback(f"🖼️ Calibrated {completed}/{total} frames...")
             except Exception as e:
-                print(f"💥 Error in calibration: {e}")
+                log_callback(f"💥 Error in calibration: {e}")
+
+    log_callback("📦 Creating ZIP archive of calibrated frames...")
 
     session_date = datetime.now().strftime("%Y%m%d")
     object_safe = session_title.replace(' ', '_').replace(':', '_') or 'UnknownObject'
@@ -153,6 +170,6 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
             full_path = os.path.join(calibrated_folder, file_name)
             zipf.write(full_path, arcname=file_name)
 
-    print(f"📦 Calibrated frames zipped successfully: {zip_name}")
+    log_callback(f"📦 Calibrated frames zipped successfully: {zip_name}")
 
     return master_dark, master_flat, master_bias

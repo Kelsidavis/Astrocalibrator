@@ -191,13 +191,14 @@ def _calibration_worker():
     os.makedirs(temp_folder, exist_ok=True)
 
     run_parallel_calibration(
-        light_images=light_files,
-        dark_images=dark_files,
-        flat_images=flat_files,
-        bias_images=bias_files,
-        output_folder=output_folder,
-        session_title=session_title_var.get()
-    )
+    light_images=light_files,
+    dark_images=dark_files,
+    flat_images=flat_files,
+    bias_images=bias_files,
+    output_folder=output_folder,
+    session_title=session_title_var.get(),
+    log_callback=log_message  # <-- NEW
+)
 
     elapsed = time.time() - start_time
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
