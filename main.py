@@ -292,9 +292,21 @@ def run_plate_solving():
     for path in light_files_to_solve:
         threading.Thread(target=solve_worker, args=(path,), daemon=True).start()
 
-    def check_solving_results():
+    def check_solving_results(result_queue):
         try:
-            pass
+            while True:
+                session_name = result_queue.get_nowait()
+                if session_name:
+                    info = object_info.get(session_name)
+                    if info:
+                        object_description_var.set(info[0])
+                        object_distance_var.set(f"Distance: {info[1]}")
+                    else:
+                        object_description_var.set("No description available")
+                        object_distance_var.set("Unknown distance")
+
+                    log_message(f"📅 Solved frame for object: {session_name}")
+
         except queue.Empty:
             pass
 
@@ -303,8 +315,9 @@ def run_plate_solving():
         )
 
         if worker_threads_alive:
-            root.after(500, check_solving_results)
+            root.after(500, check_solving_results, result_queue)
         else:
+            # When ALL solving finished:
             solve_btn.config(state='normal')
             calibrate_btn.config(state='normal')
             progress_bar.stop()
@@ -314,26 +327,40 @@ def run_plate_solving():
 
             log_message(f"✅ Plate solving complete.")
 
-            # Pick the most common session name after solving
+            # Now choose session name for main window
             if session_names_collected:
                 from collections import Counter
                 most_common_name, _ = Counter(session_names_collected).most_common(1)[0]
-                log_message(f"📅 Final Imaging Session determined: {most_common_name}")
                 session_title_var.set(most_common_name)
-                info = object_info.get(most_common_name)
+                # Lookup description and distance from local database
+            # Lookup description and distance from local database
+            try:
+                def fix_catalog_name(name):
+                    name = name.strip().title()
+                    name = name.replace("Ngc", "NGC").replace("Ic", "IC").replace("Messier", "Messier")
+                    return name
+
+                lookup_name = fix_catalog_name(most_common_name)
+
+                info = object_info.get(lookup_name)
+
                 if info:
                     object_description_var.set(info[0])
                     object_distance_var.set(f"Distance: {info[1]}")
+                    log_message(f"🔭 {lookup_name}: {info[0]}, {info[1]} away")
                 else:
                     object_description_var.set("No description available")
                     object_distance_var.set("Unknown distance")
-                log_message(f"📅 Final Imaging Session: {most_common_name}")
+                    log_message(f"⚠️ Object '{lookup_name}' not found in database.")
 
+                log_message(f"📅 Final Imaging Session: {lookup_name}")
 
-            # Fallback session title if solving failed
+            except Exception as e:
+                log_message(f"💥 Failed to load object info: {e}")
+
+            # Fallback if solving failed completely
             if session_title_var.get() == "Welcome to Astrocalibrator!":
                 try:
-                    from astropy.io import fits
                     first_light = next(iter(light_files), None)
                     if first_light:
                         with fits.open(first_light) as hdul:
@@ -354,7 +381,7 @@ def run_plate_solving():
             except Exception as e:
                 log_message(f"⚠️ Failed to clean solve temp folder: {e}")
 
-    root.after(500, check_solving_results)
+    root.after(500, check_solving_results, result_queue)
 
 def solve_then_calibrate(result_queue):
     def worker():
@@ -372,6 +399,8 @@ def check_solve_and_calibrate_results(result_queue):
             session_name = result_queue.get_nowait()
             if session_name:
                 session_title_var.set(session_name)
+                print(f"🔍 Looking for session name: '{session_title_var.get()}'")
+                print(f"🔍 object_info keys: {list(object_info.keys())}")
                 info = object_info.get(session_name)
                 if info:
                     object_description_var.set(info[0])
