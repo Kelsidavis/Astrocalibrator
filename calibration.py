@@ -82,7 +82,7 @@ def load_fits_by_filter(file_list):
             filtered['UNKNOWN'].append(path)
     return filtered
 
-def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bias_path, calibrated_folder):
+def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bias_path, calibrated_folder, log_callback=None):
     calibrated_data = calibrate_image(
         light_path,
         use_master=True,
@@ -92,8 +92,35 @@ def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bi
     )
 
     header = fits.getheader(light_path)
+
+    # Add calibration information
+    header['CALIB'] = (True, 'Frame has been calibrated')
+    header.add_history('Calibrated using Astrocalibrator')
+
+    # Log preserved important fields
+    important_fields = ['OBJECT', 'OBSERVER', 'INSTRUME', 'FILTER', 'DATE-OBS', 'EXPTIME', 'TELESCOP']
+    preserved = []
+    missing = []
+
+    for key in important_fields:
+        if key in header:
+            preserved.append(f"{key}='{header[key]}'")
+        else:
+            missing.append(key)
+
+    if log_callback:
+        log_callback(f"🧾 Preserved header fields for {os.path.basename(light_path)}:")
+        for item in preserved:
+            log_callback(f"   - {item}")
+
+        if missing:
+            log_callback(f"⚠️ Missing expected fields: {', '.join(missing)}")
+
     base_name = os.path.basename(light_path)
-    output_path = os.path.join(calibrated_folder, f"cal_{base_name}")
+    output_path = os.path.join(
+        calibrated_folder,
+        f"{os.path.splitext(base_name)[0]}_cal.fits"
+    )
 
     fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
     return output_path
@@ -152,8 +179,10 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
                 master_dark_path,
                 master_flat_path,
                 master_bias_path,
-                calibrated_folder
-            ) for light_path in light_images
+                calibrated_folder,
+                log_callback
+            )
+            for light_path in light_images   # <<< 🛠️ This was missing too!
         ]
 
         completed = 0
