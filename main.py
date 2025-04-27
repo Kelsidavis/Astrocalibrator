@@ -31,6 +31,27 @@ from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
 
+from datetime import datetime
+
+def generate_fallback_name(header=None):
+    date_stamp = datetime.now().strftime("%Y-%m-%d")
+
+    if header:
+        try:
+            ra_deg = header.get('CRVAL1')
+            dec_deg = header.get('CRVAL2')
+            if ra_deg is not None and dec_deg is not None:
+                ra_h = int(ra_deg / 15)
+                ra_m = int((ra_deg / 15 - ra_h) * 60)
+                dec_sign = '+' if dec_deg >= 0 else '-'
+                dec_d = int(abs(dec_deg))
+                dec_m = int((abs(dec_deg) - dec_d) * 60)
+                return f"RA{ra_h:02d}h{ra_m:02d}m_DEC{dec_sign}{dec_d:02d}d{dec_m:02d}m_{date_stamp}"
+        except Exception as e:
+            print(f"⚠️ Failed to read fallback RA/DEC: {e}")
+
+    return f"UnknownObject_{date_stamp}"
+
 def wiggle_button(widget):
     def move_left():
         widget.place_configure(x=widget.winfo_x() - 5)
@@ -218,6 +239,17 @@ def run_plate_solving():
             log_message(f"🧪 Solving: {path}")
             try:
                 session_name = plate_solve_and_update_header(path, log_message)
+                
+                # 🛠 Debug FITS header right after solving
+                try:
+                    from astropy.io import fits  # local import inside thread
+                    with fits.open(path) as hdul:
+                        hdr = hdul[0].header
+                        print("🔍 FITS Header keys:", list(hdr.keys()))
+                        print("🔍 FITS OBJECT field:", hdr.get('OBJECT'))
+                except Exception as e:
+                    print(f"⚠️ Could not read FITS header: {e}")
+    
                 if not session_name:
                     session_name = find_nearest_known_object(path, object_info)
                 if session_name:
@@ -274,6 +306,24 @@ def run_plate_solving():
             solve_btn.config(state='normal')
             calibrate_btn.config(state='normal')
             log_message(f"✅ Plate solving complete.")
+
+            # Fallback session title if solving failed
+            if session_title_var.get() == "Welcome to Astrocalibrator!":
+                try:
+                    from astropy.io import fits
+                    first_light = next(iter(light_files), None)
+                    if first_light:
+                        with fits.open(first_light) as hdul:
+                            header = hdul[0].header
+                            fallback_name = generate_fallback_name(header)
+                    else:
+                        fallback_name = generate_fallback_name()
+                except Exception as e:
+                    print(f"⚠️ Could not read FITS for fallback: {e}")
+                    fallback_name = generate_fallback_name()
+
+                session_title_var.set(fallback_name)
+                log_message(f"📅 Fallback Imaging Session set to: {fallback_name}")
 
             try:
                 shutil.rmtree(solve_temp_folder)
