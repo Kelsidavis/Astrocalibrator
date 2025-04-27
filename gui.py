@@ -5,7 +5,6 @@ import webbrowser
 from urllib.request import urlopen
 from PIL import Image, ImageTk
 import io
-from solving import open_pixel_settings_window
 
 # Tooltip helper
 class ToolTip:
@@ -395,7 +394,6 @@ menubar = tk.Menu(root)
 # Settings Menu
 settingsmenu = tk.Menu(menubar, tearoff=0)
 settingsmenu.add_command(label="Set ASTAP Location", command=set_astap_location)
-settingsmenu.add_command(label="Pixel Scale Settings", command=open_pixel_settings_window)
 menubar.add_cascade(label="Settings", menu=settingsmenu)
 
 
