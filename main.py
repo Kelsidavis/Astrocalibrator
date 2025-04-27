@@ -344,36 +344,44 @@ def start_processing():
         return
     result_queue = queue.Queue()
 
-    def solve_then_calibrate(result_queue):
-        try:
-            solve_images(result_queue)
-            calibrate_images(result_queue)
-        except Exception as e:
-            log_message(f"💥 Exception in solve_then_calibrate: {e}")
+def solve_then_calibrate(result_queue):
+    try:
+        run_plate_solving()
+        _calibration_worker()
+    except Exception as e:
+        log_message(f"💥 Exception in solve_then_calibrate: {e}")
 
-    def check_solve_and_calibrate_results(result_queue):
-        try:
-            while True:
-                session_name = result_queue.get_nowait()
-                if session_name:
-                    session_title_var.set(session_name)
-                    info = object_info.get(session_name)
-                    if info:
-                        object_description_var.set(info[0])
-                        object_distance_var.set(f"Distance: {info[1]}")
-                    else:
-                        object_description_var.set("No description available")
-                        object_distance_var.set("Unknown distance")
-                    log_message(f"📅 Updated Imaging Session: {session_name}")
-        except queue.Empty:
-            pass
+def check_solve_and_calibrate_results(result_queue):
+    try:
+        while True:
+            session_name = result_queue.get_nowait()
+            if session_name:
+                session_title_var.set(session_name)
+                info = object_info.get(session_name)
+                if info:
+                    object_description_var.set(info[0])
+                    object_distance_var.set(f"Distance: {info[1]}")
+                else:
+                    object_description_var.set("No description available")
+                    object_distance_var.set("Unknown distance")
+                log_message(f"📅 Updated Imaging Session: {session_name}")
+    except queue.Empty:
+        pass
 
-        if threading.active_count() > 1:
-            root.after(500, check_solve_and_calibrate_results, result_queue)
-        else:
-            solve_btn.config(state='normal')
-            calibrate_btn.config(state='normal')
-            log_message(f"✅ Solve + Calibrate complete.")
+    if threading.active_count() > 1:
+        root.after(500, check_solve_and_calibrate_results, result_queue)
+    else:
+        solve_btn.config(state='normal')
+        calibrate_btn.config(state='normal')
+        log_message(f"✅ Solve + Calibrate complete.")
+
+def start_processing():
+    if not output_folder_var.get():
+        mb.showwarning("No Output Folder Selected", "⚠️ Please select an output folder before processing.")
+        wiggle_button(select_output_btn)
+        return
+
+    result_queue = queue.Queue()
 
     calibrate_btn.config(state='disabled')
     solve_btn.config(state='disabled')
