@@ -306,6 +306,7 @@ def run_plate_solving():
             if session_names_collected:
                 from collections import Counter
                 most_common_name, _ = Counter(session_names_collected).most_common(1)[0]
+                log_message(f"📅 Final Imaging Session determined: {most_common_name}")
                 session_title_var.set(most_common_name)
                 info = object_info.get(most_common_name)
                 if info:
@@ -366,7 +367,6 @@ def check_solve_and_calibrate_results(result_queue):
                 else:
                     object_description_var.set("No description available")
                     object_distance_var.set("Unknown distance")
-                log_message(f"📅 Updated Imaging Session: {session_name}")
     except queue.Empty:
         pass
 
