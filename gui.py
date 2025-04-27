@@ -41,6 +41,14 @@ class ToolTip:
             self.tipwindow.destroy()
             self.tipwindow = None
 
+def save_settings(settings):
+    try:
+        with open('settings.json', 'w') as f:
+            json.dump(settings, f, indent=4)
+    except Exception as e:
+        print(f"⚠️ Failed to save settings: {e}")
+
+
 def log_message(msg):
     print(msg)
     log_textbox.after(0, lambda: (
@@ -49,12 +57,6 @@ def log_message(msg):
     ))
 
 root = tk.Tk()
-
-def set_astap_location():
-    path = filedialog.askopenfilename(title="Select ASTAP Executable", filetypes=[("Executable files", "*.exe")])
-    if path:
-        # TODO: Save the path somewhere
-        print(f"🔧 ASTAP location set: {path}")
 
 # Set custom icon from local file
 try:
@@ -140,6 +142,30 @@ progress_var = tk.DoubleVar()
 master_dark_path = tk.StringVar()
 master_flat_path = tk.StringVar()
 master_bias_path = tk.StringVar()
+
+astap_path_var = tk.StringVar()
+
+# Load settings.json at startup
+try:
+    import json
+    with open('settings.json', 'r') as f:
+        user_settings = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    user_settings = {}
+
+    # Enforce default ASTAP path if missing
+if 'astap_path' not in user_settings:
+    user_settings['astap_path'] = "C:/Program Files/ASTAP"
+    save_settings(user_settings)
+
+if 'output_folder' not in user_settings:
+    user_settings['output_folder'] = ""
+    save_settings(user_settings)
+
+# Preload saved ASTAP path if available
+if 'astap_path' in user_settings:
+    astap_path_var.set(user_settings['astap_path'])
+
 
 master_dark_enabled = tk.BooleanVar()
 master_flat_enabled = tk.BooleanVar()
@@ -364,8 +390,6 @@ scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
 scrollbar.pack(side='right', fill='y')
 log_textbox.config(yscrollcommand=scrollbar.set)
 
-
-
 def browse_file(var):
     path = filedialog.askopenfilename(title="Select Master Calibration Frame", filetypes=[("FITS files", "*.fits")])
     if path:
@@ -385,6 +409,39 @@ def browse_file(var):
             bias_label.config(text="Master Selected")
         toggle_input_state()
         root.update_idletasks()  # Force immediate redraw here!
+
+def set_astap_location():
+    existing_path = astap_path_var.get()
+    if existing_path and os.path.isdir(existing_path):
+        initial_folder = existing_path
+    else:
+        initial_folder = "C:/Program Files/ASTAP"
+
+    path = filedialog.askopenfilename(
+        title="Select ASTAP Executable",
+        initialdir=initial_folder,
+        filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
+    )
+    if path:
+        astap_path_var.set(path)
+        user_settings['astap_path'] = os.path.dirname(path)  # Save FOLDER not FILE
+        save_settings(user_settings)
+        log_message(f"🔧 ASTAP location set: {path}")
+        auto_close_message("Settings Saved", "✅ ASTAP location saved successfully!", timeout=2000)
+
+def auto_close_message(title, message, timeout=2000):
+    top = tk.Toplevel(root)
+    top.title(title)
+    top.geometry("300x100")
+    top.resizable(False, False)
+    label = tk.Label(top, text=message, font=("Arial", 10))
+    label.pack(expand=True, pady=20)
+    top.after(timeout, top.destroy)
+    # Center the popup
+    top.update_idletasks()
+    x = root.winfo_x() + (root.winfo_width() // 2) - (top.winfo_width() // 2)
+    y = root.winfo_y() + (root.winfo_height() // 2) - (top.winfo_height() // 2)
+    top.geometry(f"+{x}+{y}")
 
 # Now call UI initialization after everything is defined
 
