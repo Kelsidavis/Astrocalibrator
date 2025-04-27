@@ -108,13 +108,17 @@ def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bi
         else:
             missing.append(key)
 
+    # 🛠️ Suppress 'FILTER' warning if image is likely OSC
+    likely_osc = ('BAYERPAT' in header) or ('BAYER' in str(header)) or ('FILTER' not in header)
+
     if log_callback:
         log_callback(f"🧾 Preserved header fields for {os.path.basename(light_path)}:")
         for item in preserved:
             log_callback(f"   - {item}")
 
         if missing:
-            log_callback(f"⚠️ Missing expected fields: {', '.join(missing)}")
+            if not (likely_osc and missing == ['FILTER']):
+                log_callback(f"⚠️ Missing expected fields: {', '.join(missing)}")
 
     base_name = os.path.basename(light_path)
     output_path = os.path.join(
