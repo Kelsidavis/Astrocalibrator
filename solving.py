@@ -35,19 +35,29 @@ def query_object_name(ra_deg, dec_deg, log_message):
 def plate_solve_and_update_header(fits_path, log_message):
     try:
         print("👣 Entered plate_solve_and_update_header()")
-
         cmd = [
             r"C:\\Program Files\\astap\\astap.exe" if os.path.exists(r"C:\\Program Files\\astap\\astap.exe") else "astap.exe",
             "-f", fits_path,
-            "-wcs", os.path.splitext(fits_path)[0] + ".wcs",
-            "-scale", str(calculate_pixel_scale())
+            "-wcs", os.path.splitext(fits_path)[0] + ".wcs"
         ]
+
+        print(f"🗂️ Input FITS path received: {fits_path}")
+        print(f"🛤️ ASTAP executable path: {cmd[0]}")
+        print(f"🔧 Running ASTAP with command: {cmd}")
 
         try:
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=90)
         except FileNotFoundError as e:
             raise FileNotFoundError("Plate solver executable not found") from e
+
+        # Check if ASTAP failed
+        if result.returncode != 0:
+            print(f"❌ ASTAP solver failed with exit code {result.returncode}")
+            print(f"❌ ASTAP stderr: {result.stderr.strip()}")
+            return  # Exit early if solver failed
+
         print(f"[INFO] ASTAP stdout: {result.stdout.strip()}")
+
 
         with fits.open(fits_path) as hdul:
             hdr = hdul[0].header

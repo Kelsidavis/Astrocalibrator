@@ -208,7 +208,7 @@ def select_files(file_list, label, expected_type=None):
                     elif expected_type == "BIAS":
                         master_bias_enabled.set(False)
                     elif expected_type == "DARKFLAT":
-                        pass  # Nothing to disable for dark flats
+                        pass
 
                     if validated_files:
                         messagebox.showinfo(
@@ -216,24 +216,26 @@ def select_files(file_list, label, expected_type=None):
                             f"{len(validated_files)} {expected_type.title()} selected successfully."
                         )
 
-                    root.config(cursor="")  # ✅ Restore normal cursor after processing
+                    root.config(cursor="")  # ✅ Restore normal cursor
 
-        # ✅ New behavior: Auto-run plate solving if LIGHT frames selected
-        from main import run_plate_solving
-        if expected_type == "LIGHT":
-            if output_folder_var.get():
-                from main import run_plate_solving  # ✅ Import here safely inside function
-                log_message("🚀 Lights selected. Starting plate solving...")
-                run_plate_solving()
-            else:
-                log_message("⚠️ Please select output folder before plate solving.")
-                messagebox.showwarning("Output Folder Needed", "⚠️ Please select an output folder before plate solving.")
+                    # ✅ ✅ ONLY after successfully updating, then start solving
+                    if expected_type == "LIGHT":
+                        if output_folder_var.get():
+                            from main import run_plate_solving  # <-- ADD THIS LINE *HERE* INSIDE THE IF BLOCK
+                            log_message("🚀 Lights selected. Preparing plate solving...")
+                            run_plate_solving()
+                        else:
+                            log_message("⚠️ Please select output folder before plate solving.")
+                            messagebox.showwarning("Output Folder Needed", "⚠️ Please select an output folder before plate solving.")
 
                 root.after(0, update_ui)
+
+            root.after(10, process_files)
 
     except Exception as e:
         root.config(cursor="")
         raise e
+
     
 def update_ui():
     light_label.config(text=f"{len(light_files)} lights selected")

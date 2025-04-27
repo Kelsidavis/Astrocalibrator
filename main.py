@@ -66,6 +66,41 @@ def wiggle_button(widget):
 
     move_left()
 
+# after all imports and small functions like wiggle_button()
+
+def select_output_directory():
+    path = filedialog.askdirectory(title="Select Output Folder")
+    if path:
+        output_folder_var.set(path)
+        log_message(f"📂 Output folder set to: {path}")
+        select_output_btn.config(font=("Arial", 10), width=18, height=1)
+        calibrate_btn.config(font=("Arial", 14, "bold"), width=25, height=3)
+        light_btn.config(state='normal')
+        dark_btn.config(state='normal')
+        flat_btn.config(state='normal')
+        darkflat_btn.config(state='normal')
+        bias_btn.config(state='normal')
+        calibrate_btn.config(state='normal')
+        reset_btn.config(state='normal')
+        master_dark_btn.config(state='normal')
+        master_flat_btn.config(state='normal')
+        master_bias_btn.config(state='normal')
+
+# ✅ Now create output folder frame ONCE
+output_folder_frame = tk.Frame(root)
+output_folder_frame.pack(pady=(5, 0))
+
+select_output_btn = tk.Button(
+    output_folder_frame,
+    text="Select Output Folder",
+    font=("Arial", 12, "bold"),
+    width=25,
+    height=2,
+    command=select_output_directory  # now this works because function is defined
+)
+ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
+select_output_btn.pack(padx=10, pady=5)
+
 def find_nearest_known_object(fits_path, catalog):
     try:
         ra, dec = None, None
@@ -83,15 +118,12 @@ def find_nearest_known_object(fits_path, catalog):
             wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
             if os.path.exists(wcs_file):
                 try:
-                    with open(wcs_file, 'r') as f:
-                        lines = f.readlines()
-                        for line in lines:
-                            if 'RA center' in line:
-                                ra = float(line.split(':')[1].strip())
-                            if 'DEC center' in line:
-                                dec = float(line.split(':')[1].strip())
+                    with fits.open(wcs_file) as hdul:
+                        hdr = hdul[0].header
+                        ra = hdr.get('CRVAL1')
+                        dec = hdr.get('CRVAL2')
                     if ra is not None and dec is not None:
-                        log_message(f"🧭 Sidecar WCS center: RA={ra:.4f}°, Dec={dec:.4f}°")
+                        log_message(f"🧭 Sidecar WCS center (from FITS): RA={ra:.4f}°, Dec={dec:.4f}°")
                 except Exception as e:
                     log_message(f"⚠️ Failed to read sidecar WCS: {e}")
 
@@ -116,51 +148,10 @@ def find_nearest_known_object(fits_path, catalog):
 
     return None
 
-
 control_frame = tk.Frame(root)
 control_frame.pack(pady=10)
 
-def select_output_directory():
-    path = filedialog.askdirectory(title="Select Output Folder")
-    if path:
-        output_folder_var.set(path)
-        log_message(f"📂 Output folder set to: {path}")
-
-        # Enable file selection buttons now
-        light_btn.config(state='normal')
-        dark_btn.config(state='normal')
-        flat_btn.config(state='normal')
-        darkflat_btn.config(state='normal')
-        bias_btn.config(state='normal')
-        # Shrink Select Output Folder button
-        select_output_btn.config(font=("Arial", 10), width=18, height=1)
-        # Grow Calibrate Files button
-        calibrate_btn.config(font=("Arial", 14, "bold"), width=25, height=3)
-        # Enable Solve (Calibrate) button
-        calibrate_btn.config(state='normal')
-        # Enable Reset Options button
-        reset_btn.config(state='normal')
-        # Enable master calibration buttons
-        master_dark_btn.config(state='normal')
-        master_flat_btn.config(state='normal')
-        master_bias_btn.config(state='normal')
-
-output_folder_frame = tk.Frame(root)
-output_folder_frame.pack(pady=(5, 0))
-
-select_output_btn = tk.Button(
-    output_folder_frame,
-    text="Select Output Folder",
-    font=("Arial", 12, "bold"),  # Bigger text
-    width=25,  # Wider button
-    height=2,  # Taller button
-    command=select_output_directory
-)
-ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
-select_output_btn.pack(padx=10, pady=5)
-
 # Save Masters + Buttons grouped into frames
-
 save_masters_frame = tk.Frame(control_frame)
 save_masters_frame.pack(side='left', padx=(10, 50))
 
@@ -171,6 +162,11 @@ save_masters_checkbox.pack()
 
 buttons_frame = tk.Frame(control_frame)
 buttons_frame.pack(side='left', padx=10)
+
+calibrate_btn = tk.Button(buttons_frame, text="Calibrate Files", font=("Arial", 12, "bold"), width=20, height=2)
+ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using selected masters and settings.")
+calibrate_btn.pack(side='left', padx=10)
+solve_btn = calibrate_btn  # Alias so both names can be used
 
 progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
 progress_bar.pack(fill='x', padx=10, pady=5)
@@ -230,6 +226,7 @@ def run_plate_solving():
     calibrate_btn.config(state='disabled')
     log_message("📅 Starting plate solving in background...")
 
+    print(f"💬 light_files from GUI: {light_files}")
     light_files_to_solve = [f for f in light_files if os.path.exists(f)]
     solver_failed = False
 
@@ -238,6 +235,8 @@ def run_plate_solving():
         try:
             log_message(f"🧪 Solving: {path}")
             try:
+                print(f"👣 Entering solve_worker() for path: {path}")
+                print(f"🛤️ Checking if file exists: {os.path.exists(path)}")
                 session_name = plate_solve_and_update_header(path, log_message)
                 
                 # 🛠 Debug FITS header right after solving
@@ -275,6 +274,10 @@ def run_plate_solving():
                 log_message(f"💥 Exception in solve_worker: {e}\n{traceback.format_exc()}")
         except Exception as outer_err:
             log_message(f"💥 Outer exception in solve_worker: {outer_err}")
+
+            
+    print(f"💬 Lights to solve: {light_files_to_solve}")
+    print(f"💬 Total light frames selected: {len(light_files_to_solve)}")
 
     for path in light_files_to_solve:
         threading.Thread(target=solve_worker, args=(path,), daemon=True).start()
@@ -332,11 +335,6 @@ def run_plate_solving():
                 log_message(f"⚠️ Failed to clean solve temp folder: {e}")
 
     root.after(500, check_solving_results)
-
-calibrate_btn = tk.Button(buttons_frame, text="Calibrate Files", font=("Arial", 12, "bold"), width=20, height=2)
-ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using selected masters and settings.")
-calibrate_btn.pack(side='left', padx=10)
-solve_btn = calibrate_btn  # Alias so both names can be used
 
 def start_processing():
     if not output_folder_var.get():
