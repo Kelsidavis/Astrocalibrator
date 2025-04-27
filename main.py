@@ -31,8 +31,6 @@ from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
 
-from datetime import datetime
-
 def generate_fallback_name(header=None):
     date_stamp = datetime.now().strftime("%Y-%m-%d")
 
@@ -170,7 +168,7 @@ ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using sel
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used
 
-progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100, mode="determinate")
+progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100, mode="indeterminate")
 progress_bar.pack(fill='x', padx=10, pady=5)
 
 def _calibration_worker():
@@ -235,6 +233,7 @@ def run_plate_solving():
     log_message("📅 Starting plate solving in background...")
     progress_bar.config(mode="indeterminate")
     progress_bar.start(10)
+    root.update_idletasks()
 
     print(f"💬 light_files from GUI: {light_files}")
     light_files_to_solve = [f for f in light_files if os.path.exists(f)]
@@ -309,6 +308,7 @@ def run_plate_solving():
             solve_btn.config(state='normal')
             calibrate_btn.config(state='normal')
             progress_bar.stop()
+            root.update_idletasks()
             progress_bar.config(mode="determinate")
             progress_var.set(100)
 
