@@ -206,8 +206,6 @@ def select_files(file_list, label, expected_type=None):
 
                 root.after(0, update_ui)
 
-            threading.Thread(target=process_files, daemon=True).start()
-
     except Exception as e:
         root.config(cursor="")
         raise e

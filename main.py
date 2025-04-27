@@ -19,6 +19,9 @@ from settings import load_settings, save_settings, remember_file, get_remembered
 
 from gui import light_files, dark_files, flat_files, bias_files
 from gui import file_frame, light_label, dark_label, flat_label
+from gui import light_btn, dark_btn, flat_btn, bias_btn, darkflat_btn
+from gui import reset_btn
+from gui import master_dark_btn, master_flat_btn, master_bias_btn
 
 from gui import object_description_var, object_distance_var
 from object_info import object_info
@@ -28,6 +31,19 @@ from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
 
+def wiggle_button(widget):
+    def move_left():
+        widget.place_configure(x=widget.winfo_x() - 5)
+        widget.after(50, move_right)
+
+    def move_right():
+        widget.place_configure(x=widget.winfo_x() + 10)
+        widget.after(50, move_center)
+
+    def move_center():
+        widget.place_configure(x=widget.winfo_x() - 5)
+
+    move_left()
 
 def find_nearest_known_object(fits_path, catalog):
     try:
@@ -83,6 +99,45 @@ def find_nearest_known_object(fits_path, catalog):
 control_frame = tk.Frame(root)
 control_frame.pack(pady=10)
 
+def select_output_directory():
+    path = filedialog.askdirectory(title="Select Output Folder")
+    if path:
+        output_folder_var.set(path)
+        log_message(f"📂 Output folder set to: {path}")
+
+        # Enable file selection buttons now
+        light_btn.config(state='normal')
+        dark_btn.config(state='normal')
+        flat_btn.config(state='normal')
+        darkflat_btn.config(state='normal')
+        bias_btn.config(state='normal')
+        # Shrink Select Output Folder button
+        select_output_btn.config(font=("Arial", 10), width=18, height=1)
+        # Grow Calibrate Files button
+        calibrate_btn.config(font=("Arial", 14, "bold"), width=25, height=3)
+        # Enable Solve (Calibrate) button
+        calibrate_btn.config(state='normal')
+        # Enable Reset Options button
+        reset_btn.config(state='normal')
+        # Enable master calibration buttons
+        master_dark_btn.config(state='normal')
+        master_flat_btn.config(state='normal')
+        master_bias_btn.config(state='normal')
+
+output_folder_frame = tk.Frame(root)
+output_folder_frame.pack(pady=(5, 0))
+
+select_output_btn = tk.Button(
+    output_folder_frame,
+    text="Select Output Folder",
+    font=("Arial", 12, "bold"),  # Bigger text
+    width=25,  # Wider button
+    height=2,  # Taller button
+    command=select_output_directory
+)
+ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
+select_output_btn.pack(padx=10, pady=5)
+
 # Save Masters + Buttons grouped into frames
 
 save_masters_frame = tk.Frame(control_frame)
@@ -95,16 +150,6 @@ save_masters_checkbox.pack()
 
 buttons_frame = tk.Frame(control_frame)
 buttons_frame.pack(side='left', padx=10)
-
-def select_output_directory():
-    path = filedialog.askdirectory(title="Select Output Folder")
-    if path:
-        output_folder_var.set(path)
-        log_message(f"📂 Output folder set to: {path}")
-
-select_output_btn = tk.Button(buttons_frame, text="Select Output Folder", command=select_output_directory)
-ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
-select_output_btn.pack(side='left', padx=10)
 
 progress_bar = tk.ttk.Progressbar(root, variable=progress_var, maximum=100)
 progress_bar.pack(fill='x', padx=10, pady=5)
@@ -238,12 +283,16 @@ def run_plate_solving():
 
     root.after(500, check_solving_results)
 
-calibrate_btn = tk.Button(buttons_frame, text="Solve & Calibrate")
+calibrate_btn = tk.Button(buttons_frame, text="Calibrate Files", font=("Arial", 12, "bold"), width=20, height=2)
 ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using selected masters and settings.")
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used
 
 def start_processing():
+    if not output_folder_var.get():
+        mb.showwarning("No Output Folder Selected", "⚠️ Please select an output folder before processing.")
+        wiggle_button(select_output_btn)
+        return
     result_queue = queue.Queue()
 
     def solve_then_calibrate(result_queue):
@@ -290,8 +339,23 @@ def debug_widget_list():
     for child in file_frame.winfo_children():
         print(" -", child, "text=", getattr(child, 'cget', lambda x: 'N/A')('text'))
 
+def disable_file_buttons():
+    light_btn.config(state='disabled')
+    dark_btn.config(state='disabled')
+    flat_btn.config(state='disabled')
+    darkflat_btn.config(state='disabled')
+    bias_btn.config(state='disabled')
+    master_dark_btn.config(state='disabled')
+    master_flat_btn.config(state='disabled')
+    master_bias_btn.config(state='disabled')
+    calibrate_btn.config(state='disabled')
+    reset_btn.config(state='disabled')
+
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
+
+    root.after(100, disable_file_buttons)  # 🛠 Schedule button disabling after GUI loads
     root.mainloop()
+
 
