@@ -337,19 +337,15 @@ def run_plate_solving():
 
     root.after(500, check_solving_results)
 
-def start_processing():
-    if not output_folder_var.get():
-        mb.showwarning("No Output Folder Selected", "⚠️ Please select an output folder before processing.")
-        wiggle_button(select_output_btn)
-        return
-    result_queue = queue.Queue()
-
 def solve_then_calibrate(result_queue):
-    try:
-        run_plate_solving()
-        _calibration_worker()
-    except Exception as e:
-        log_message(f"💥 Exception in solve_then_calibrate: {e}")
+    def worker():
+        try:
+            run_plate_solving()
+            _calibration_worker()
+        except Exception as e:
+            log_message(f"💥 Exception in solve_then_calibrate: {e}")
+    threading.Thread(target=worker, daemon=True).start()
+    root.after(500, check_solve_and_calibrate_results, result_queue)
 
 def check_solve_and_calibrate_results(result_queue):
     try:
@@ -382,14 +378,12 @@ def start_processing():
         return
 
     result_queue = queue.Queue()
-
     calibrate_btn.config(state='disabled')
     solve_btn.config(state='disabled')
-
-    threading.Thread(target=solve_then_calibrate, args=(result_queue,), daemon=True).start()
-    root.after(500, check_solve_and_calibrate_results, result_queue)
+    solve_then_calibrate(result_queue)
 
 calibrate_btn.config(command=start_processing)
+
 
 def debug_widget_list():
     print("\n🧩 Widgets inside file_frame:")

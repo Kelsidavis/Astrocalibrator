@@ -1,6 +1,9 @@
 from astropy.io import fits
 import numpy as np
 import os
+import zipfile
+import concurrent.futures
+from datetime import datetime
 
 def load_fits_data(path):
     if os.path.exists(path):
@@ -15,13 +18,11 @@ def calibrate_image(light_path, use_master=False, master_dark_path=None, master_
 
     exposure_light = light_header.get('EXPTIME', None)
 
-    # Bias subtraction
     if use_master and master_bias_path and os.path.exists(master_bias_path):
         with fits.open(master_bias_path) as bias_hdul:
             master_bias = bias_hdul[0].data.astype(float)
         light_data -= master_bias
 
-    # Dark subtraction with scaling
     if use_master and master_dark_path and os.path.exists(master_dark_path):
         with fits.open(master_dark_path) as dark_hdul:
             master_dark = dark_hdul[0].data.astype(float)
@@ -34,7 +35,6 @@ def calibrate_image(light_path, use_master=False, master_dark_path=None, master_
         else:
             light_data -= master_dark
 
-    # Flat correction
     if use_master and master_flat_path and os.path.exists(master_flat_path):
         with fits.open(master_flat_path) as flat_hdul:
             master_flat = flat_hdul[0].data.astype(float)
@@ -88,70 +88,71 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
     master_bias = None
     master_dark_flat = None
 
-    # Create master bias if available
     if bias_images:
         master_bias = create_master_frame(bias_images)
         if master_bias is not None:
             save_master_frame(master_bias, fits.getheader(bias_images[0]), output_folder, "master_bias")
 
-    # Create master dark if available
     if dark_images:
         master_dark = create_master_frame(dark_images)
         if master_dark is not None:
             save_master_frame(master_dark, fits.getheader(dark_images[0]), output_folder, "master_dark")
 
-    # Create master dark flat if available
     dark_flat_images = [img for img in dark_images if 'flat' in img.lower()]
     if dark_flat_images:
         master_dark_flat = create_master_frame(dark_flat_images)
         if master_dark_flat is not None:
             save_master_frame(master_dark_flat, fits.getheader(dark_flat_images[0]), output_folder, "master_dark_flat")
 
-    # Create master flat with dark flat subtraction if possible
     if flat_images:
         dark_flat_path = os.path.join(output_folder, "master_dark_flat_master.fits") if master_dark_flat is not None else None
         master_flat = create_master_frame(flat_images, method='median', dark_flat_path=dark_flat_path)
         if master_flat is not None:
             save_master_frame(master_flat, fits.getheader(flat_images[0]), output_folder, "master_flat")
 
-    # Calibrate each light frame
-    calibrated_images = []
-    for light_path in light_images:
-        calibrated = calibrate_image(
-            light_path,
-            use_master=True,
-            master_dark_path=os.path.join(output_folder, "master_dark_master.fits") if master_dark is not None else None,
-            master_flat_path=os.path.join(output_folder, "master_flat_master.fits") if master_flat is not None else None,
-            master_bias_path=os.path.join(output_folder, "master_bias_master.fits") if master_bias is not None else None
-        )
-        calibrated_images.append((light_path, calibrated))
+    master_dark_path = os.path.join(output_folder, "master_dark_master.fits") if master_dark is not None else None
+    master_flat_path = os.path.join(output_folder, "master_flat_master.fits") if master_flat is not None else None
+    master_bias_path = os.path.join(output_folder, "master_bias_master.fits") if master_bias is not None else None
 
-        # Save calibrated images
     calibrated_folder = os.path.join(output_folder, "calibrated")
     os.makedirs(calibrated_folder, exist_ok=True)
 
-    for original_path, calibrated_data in calibrated_images:
-        header = fits.getheader(original_path)
-        base_name = os.path.basename(original_path)
+    def calibrate_and_save(light_path):
+        calibrated_data = calibrate_image(
+            light_path,
+            use_master=True,
+            master_dark_path=master_dark_path,
+            master_flat_path=master_flat_path,
+            master_bias_path=master_bias_path
+        )
+
+        header = fits.getheader(light_path)
+        base_name = os.path.basename(light_path)
         output_path = os.path.join(calibrated_folder, f"cal_{base_name}")
+
         fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
+        return output_path
 
-        # Optionally zip all calibrated images
-    import zipfile
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = [executor.submit(calibrate_and_save, light_path) for light_path in light_images]
 
-    from datetime import datetime
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                result = future.result()
+                print(f"✅ Calibrated and saved: {result}")
+            except Exception as e:
+                print(f"💥 Error in calibration: {e}")
+
     session_date = datetime.now().strftime("%Y%m%d")
     object_safe = session_title.replace(' ', '_').replace(':', '_') or 'UnknownObject'
     zip_name = f"{object_safe}_{session_date}.zip"
     zip_path = os.path.join(output_folder, zip_name)
+
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for original_path, _ in calibrated_images:
-            base_name = os.path.basename(original_path)
-            cal_name = f"cal_{base_name}"
-            cal_path = os.path.join(calibrated_folder, cal_name)
-            if os.path.exists(cal_path):
-                zipf.write(cal_path, arcname=cal_name)
+        for file_name in os.listdir(calibrated_folder):
+            full_path = os.path.join(calibrated_folder, file_name)
+            zipf.write(full_path, arcname=file_name)
 
     print(f"📦 Calibrated frames zipped successfully: {zip_name}")
 
-    return master_dark, master_flat, master_bias, calibrated_images
+    return master_dark, master_flat, master_bias
