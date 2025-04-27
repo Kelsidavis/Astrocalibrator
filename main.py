@@ -67,6 +67,11 @@ def wiggle_button(widget):
 # --- Global collected session names ---
 session_names_collected = []
 
+# --- Globals for plate solving status ---
+solved_frames_wcs = {}  # Successfully solved frames and their WCS info
+unsolved_frames = []    # Frames that failed solving
+
+
 
 def select_output_directory():
     path = filedialog.askdirectory(title="Select Output Folder")
@@ -317,6 +322,32 @@ def run_plate_solving():
         if worker_threads_alive:
             root.after(500, check_solving_results, result_queue)
         else:
+                        # --- Estimate WCS for Unsolved Frames ---
+            if unsolved_frames and solved_frames_wcs:
+                reference_path, reference_wcs = next(iter(solved_frames_wcs.items()))
+                log_message(f"🛠 Estimating WCS for {len(unsolved_frames)} unsolved frames using reference: {os.path.basename(reference_path)}")
+
+                for failed_path in unsolved_frames:
+                    try:
+                        with fits.open(failed_path, mode='update') as hdul:
+                            hdr = hdul[0].header
+                            hdr['CRVAL1'] = reference_wcs['ra']
+                            hdr['CRVAL2'] = reference_wcs['dec']
+                            hdr['CRPIX1'] = reference_wcs['width'] / 2
+                            hdr['CRPIX2'] = reference_wcs['height'] / 2
+                            hdr['CD1_1'] = -reference_wcs['scale'] / 3600
+                            hdr['CD1_2'] = 0.0
+                            hdr['CD2_1'] = 0.0
+                            hdr['CD2_2'] = reference_wcs['scale'] / 3600
+                            hdr['CTYPE1'] = 'RA---TAN'
+                            hdr['CTYPE2'] = 'DEC--TAN'
+                            hdr['CUNIT1'] = 'deg'
+                            hdr['CUNIT2'] = 'deg'
+                            hdr['WCS_EST'] = (True, "Estimated WCS based on nearby solved frame")
+                            hdul.flush()
+                        log_message(f"✅ Estimated WCS injected into: {os.path.basename(failed_path)}")
+                    except Exception as e:
+                        log_message(f"⚠️ Failed to inject WCS into {failed_path}: {e}")
             # When ALL solving finished:
             solve_btn.config(state='normal')
             calibrate_btn.config(state='normal')
@@ -376,6 +407,9 @@ def run_plate_solving():
                 log_message(f"📅 Fallback Imaging Session set to: {fallback_name}")
 
             try:
+                # Clean up solved and unsolved tracking after solving
+                solved_frames_wcs.clear()
+                unsolved_frames.clear()
                 shutil.rmtree(solve_temp_folder)
                 log_message("🧹 Temporary solve files cleaned up.")
             except Exception as e:
