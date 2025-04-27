@@ -10,7 +10,7 @@ import zipfile
 from datetime import datetime
 from astropy.io import fits
 
-from gui import root, log_message, log_textbox, output_folder_var, progress_var
+from gui import root, log_message, log_textbox, output_folder_var, progress_var, progress_label_var
 from gui import session_title_var, master_dark_path, master_flat_path, master_bias_path
 from gui import master_dark_enabled, master_flat_enabled, master_bias_enabled
 from gui import ToolTip
@@ -23,7 +23,7 @@ from gui import file_frame, light_label, dark_label, flat_label
 from gui import light_btn, dark_btn, flat_btn, bias_btn, darkflat_btn
 from gui import reset_btn
 from gui import master_dark_btn, master_flat_btn, master_bias_btn
-
+from gui import progress_bar
 from gui import object_description_var, object_distance_var
 from object_info import object_info
 
@@ -91,7 +91,7 @@ def select_output_directory():
     if path:
         output_folder_var.set(path)
         log_message(f"📂 Output folder set to: {path}")
-        select_output_btn.config(font=("Arial", 10), width=18, height=1)
+        select_output_btn.config(font=("Arial", 10), width=1, height=1)
         calibrate_btn.config(font=("Arial", 14, "bold"), width=25, height=3)
         light_btn.config(state='normal')
         dark_btn.config(state='normal')
@@ -111,9 +111,9 @@ output_folder_frame.pack(pady=(5, 0))
 select_output_btn = tk.Button(
     output_folder_frame,
     text="Select Output Folder",
-    font=("Arial", 12, "bold"),
-    width=25,
-    height=2,
+    font=("Arial", 10, "bold"),
+    width=18,
+    height=1,
     command=select_output_directory  # now this works because function is defined
 )
 ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
@@ -186,12 +186,10 @@ ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using sel
 calibrate_btn.pack(side='left', padx=10)
 solve_btn = calibrate_btn  # Alias so both names can be used
 
-progress_bar = ttk.Progressbar(root, variable=progress_var, maximum=100, mode="indeterminate", style="TProgressbar")
-progress_bar.pack(fill='x', padx=10, pady=5)
-
 def _calibration_worker():
     import time
     start_time = time.time()
+    progress_label_var.set("Calibrating frames...")
     # Restore object info during calibration
     if cached_object_description:
         object_description_var.set(cached_object_description)
@@ -222,7 +220,7 @@ def _calibration_worker():
     session_title=session_title_var.get(),
     log_callback=log_message  # <-- NEW
 )
-
+    progress_label_var.set("Complete!")
     elapsed = time.time() - start_time
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
 
@@ -241,6 +239,8 @@ def _calibration_worker():
 
     calibrate_btn.config(state='normal')
     solve_btn.config(state='normal')
+    progress_label_var.set("Idle")
+    fade_out_progress_label()
 
 def run_calibration_pipeline():
 
@@ -254,6 +254,7 @@ def run_plate_solving():
     os.makedirs(solve_temp_folder, exist_ok=True)
     solve_btn.config(state='disabled')
     calibrate_btn.config(state='disabled')
+    progress_label_var.set("Plate solving images...")
     log_message("📅 Starting plate solving in background...")
     progress_bar.config(mode="indeterminate")
     progress_bar.start(10)
@@ -379,6 +380,9 @@ def run_plate_solving():
             root.update_idletasks()
             progress_bar.config(mode="determinate")
             progress_var.set(100)
+            progress_label_var.set("Idle")
+            fade_out_progress_label()
+
 
             log_message(f"✅ Plate solving complete.")
 
@@ -506,6 +510,27 @@ def disable_file_buttons():
     master_bias_btn.config(state='disabled')
     calibrate_btn.config(state='disabled')
     reset_btn.config(state='disabled')
+
+def fade_out_progress_label():
+    try:
+        text = progress_label_var.get()
+        if text not in ["", "Idle"]:
+            # Already doing something, don't fade
+            return
+        
+        def gradual_fade(step=0):
+            if step > 10:
+                progress_label_var.set("")
+                return
+            opacity = 1.0 - (step / 10)
+            color = f"#{int(128 * opacity + 127):02x}{int(128 * opacity + 127):02x}{int(128 * opacity + 127):02x}"
+            progress_label.config(fg=color)
+            root.after(100, lambda: gradual_fade(step + 1))
+
+        gradual_fade()
+
+    except Exception as e:
+        log_message(f"⚠️ Fade out failed: {e}")
 
 if __name__ == "__main__":
     import multiprocessing

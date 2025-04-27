@@ -58,6 +58,30 @@ def log_message(msg):
 
 root = tk.Tk()
 
+# Detect screen resolution
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+
+# Set default size based on screen height
+if screen_height <= 768:
+    # Small screens (720p, small laptops)
+    window_width = 800
+    window_height = 620
+elif screen_height <= 900:
+    # Medium screens (older monitors)
+    window_width = 850
+    window_height = 720
+else:
+    # Big screens (1080p and larger)
+    window_width = 950
+    window_height = 900
+
+# Center window on screen
+x = (screen_width // 2) - (window_width // 2)
+y = (screen_height // 2) - (window_height // 2)
+root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+root.minsize(750, 600)  # Optional: prevent making it too tiny manually
+
 # Set custom icon from local file
 try:
     icon_image = Image.open("icon.png").resize((32, 32))
@@ -138,6 +162,13 @@ distance_label.pack()
 output_folder_var = tk.StringVar()
 max_threads_var = tk.IntVar(value=os.cpu_count())
 progress_var = tk.DoubleVar()
+
+# Create progress bar linked to progress_var
+progress_bar = ttk.Progressbar(root, variable=progress_var, maximum=100, mode="determinate", style="TProgressbar")
+progress_bar.pack(fill='x', padx=10, pady=(2, 4))
+progress_label_var = tk.StringVar(value="Idle")
+progress_label = tk.Label(root, textvariable=progress_label_var, font=("Arial", 9), anchor='center')
+progress_label.pack(pady=(0, 4))
 
 master_dark_path = tk.StringVar()
 master_flat_path = tk.StringVar()
@@ -383,9 +414,9 @@ ToolTip(reset_btn, "Clear all selected frames and reset calibration settings to 
 reset_btn.pack(pady=5)
 
 log_frame = tk.Frame(root)
-log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 10))
+log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 5))
 
-log_textbox = tk.Text(log_frame, wrap='word', height=10)
+log_textbox = tk.Text(log_frame, wrap='word', height=7)
 log_textbox.pack(side='left', fill='both', expand=True)
 
 scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
@@ -465,3 +496,19 @@ menubar.add_cascade(label="Help", menu=helpmenu)
 root.config(menu=menubar)
 
 root.after(100, toggle_input_state)
+
+# --- Export GUI components to main.py ---
+__all__ = [
+    "root", "log_message", "log_textbox", "output_folder_var", "progress_var", "progress_label_var", "progress_label",
+    "session_title_var", "master_dark_path", "master_flat_path", "master_bias_path",
+    "master_dark_enabled", "master_flat_enabled", "master_bias_enabled",
+    "ToolTip",
+    "light_files", "dark_files", "flat_files", "bias_files",
+    "file_frame", "light_label", "dark_label", "flat_label",
+    "light_btn", "dark_btn", "flat_btn", "bias_btn", "darkflat_btn",
+    "reset_btn",
+    "master_dark_btn", "master_flat_btn", "master_bias_btn",
+    "progress_bar",
+    "object_description_var", "object_distance_var"
+]
+
