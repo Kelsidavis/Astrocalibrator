@@ -82,7 +82,9 @@ session_names_collected = []
 solved_frames_wcs = {}  # Successfully solved frames and their WCS info
 unsolved_frames = []    # Frames that failed solving
 
-
+# --- Cache solved object info ---
+cached_object_description = None
+cached_object_distance = None
 
 def select_output_directory():
     path = filedialog.askdirectory(title="Select Output Folder")
@@ -190,6 +192,12 @@ progress_bar.pack(fill='x', padx=10, pady=5)
 def _calibration_worker():
     import time
     start_time = time.time()
+    # Restore object info during calibration
+    if cached_object_description:
+        object_description_var.set(cached_object_description)
+    if cached_object_distance:
+        object_distance_var.set(cached_object_distance)
+
     progress_bar.config(mode="indeterminate")
     progress_bar.start(10)  # move every 10ms
     method = 'median'
@@ -309,6 +317,7 @@ def run_plate_solving():
         threading.Thread(target=solve_worker, args=(path,), daemon=True).start()
 
     def check_solving_results(result_queue):
+        global cached_object_description, cached_object_distance
         try:
             while True:
                 session_name = result_queue.get_nowait()
@@ -317,9 +326,13 @@ def run_plate_solving():
                     if info:
                         object_description_var.set(info[0])
                         object_distance_var.set(f"Distance: {info[1]}")
+                        cached_object_description = info[0]
+                        cached_object_distance = f"Distance: {info[1]}"
                     else:
                         object_description_var.set("No description available")
                         object_distance_var.set("Unknown distance")
+                        cached_object_description = "No description available"
+                        cached_object_distance = "Unknown distance"
 
                     log_message(f"📅 Solved frame for object: {session_name}")
 
