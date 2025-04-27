@@ -66,7 +66,9 @@ def wiggle_button(widget):
 
     move_left()
 
-# after all imports and small functions like wiggle_button()
+# --- Global collected session names ---
+session_names_collected = []
+
 
 def select_output_directory():
     path = filedialog.askdirectory(title="Select Output Folder")
@@ -262,7 +264,8 @@ def run_plate_solving():
                     else:
                         session_name = session_name_upper
                 log_message(f"💡 Returned session name: {session_name}")
-                result_queue.put(session_name)
+                session_names_collected.append(session_name)
+                result_queue.put(session_name)  # Keep putting to result_queue for compatibility
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
                     mb.showinfo("Plate Solver Not Found", "The plate solver executable could not be found. Calibration will continue without solving.")
@@ -284,19 +287,7 @@ def run_plate_solving():
 
     def check_solving_results():
         try:
-            while True:
-                session_name = result_queue.get_nowait()
-                if session_name:
-                    session_name = session_name.strip().title()
-                    session_title_var.set(session_name)
-                    info = object_info.get(session_name)
-                    if info:
-                        object_description_var.set(info[0])
-                        object_distance_var.set(f"Distance: {info[1]}")
-                    else:
-                        object_description_var.set("No description available")
-                        object_distance_var.set("Unknown distance")
-                    log_message(f"📅 Updated Imaging Session: {session_name}")
+            pass
         except queue.Empty:
             pass
 
@@ -310,6 +301,21 @@ def run_plate_solving():
             solve_btn.config(state='normal')
             calibrate_btn.config(state='normal')
             log_message(f"✅ Plate solving complete.")
+
+            # Pick the most common session name after solving
+            if session_names_collected:
+                from collections import Counter
+                most_common_name, _ = Counter(session_names_collected).most_common(1)[0]
+                session_title_var.set(most_common_name)
+                info = object_info.get(most_common_name)
+                if info:
+                    object_description_var.set(info[0])
+                    object_distance_var.set(f"Distance: {info[1]}")
+                else:
+                    object_description_var.set("No description available")
+                    object_distance_var.set("Unknown distance")
+                log_message(f"📅 Final Imaging Session: {most_common_name}")
+
 
             # Fallback session title if solving failed
             if session_title_var.get() == "Welcome to Astrocalibrator!":
