@@ -696,12 +696,21 @@ def try_run_plate_solving():
     else:
         log_message("⚠️ Output folder not selected. Cannot start solving yet.")
 
+def prompt_for_output_folder():
+    if not output_folder_var.get():
+        selected_folder = filedialog.askdirectory(title="Select Output Folder for Calibrated Images")
+        if selected_folder:
+            output_folder_var.set(selected_folder)
+            log_message(f"📂 Output folder set to: {selected_folder}")
+        else:
+            messagebox.showwarning("No Folder Selected", "⚠️ No output folder selected. Calibration cannot proceed without a destination folder.")
+
 # Set up initial log docking based on screen size
 root.after(100, pop_log_out_to_window)
 
 # Now we resize and center properly
 window_width = 450
-window_height = 620
+window_height = 720
 screen_width = root.winfo_screenwidth()
 screen_height = root.winfo_screenheight()
 x = (screen_width // 2) - (window_width // 2)
@@ -709,6 +718,9 @@ y = (screen_height // 2) - (window_height // 2)
 root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 root.minsize(window_width, window_height)
 root.maxsize(window_width, window_height)
+
+#root.after(300, prompt_for_output_folder) <--- this needs fixed to support the button states first
+
 
 # --- Export GUI components to main.py ---
 __all__ = [
