@@ -91,7 +91,7 @@ def select_output_directory():
     if path:
         output_folder_var.set(path)
         log_message(f"📂 Output folder set to: {path}")
-        select_output_btn.config(font=("Arial", 10), width=1, height=1)
+        select_output_btn.config(font=("Arial", 10), width=18, height=1)
         calibrate_btn.config(font=("Arial", 14, "bold"), width=25, height=3)
         light_btn.config(state='normal')
         dark_btn.config(state='normal')
@@ -113,7 +113,7 @@ select_output_btn = tk.Button(
     text="Select Output Folder",
     font=("Arial", 10, "bold"),
     width=18,
-    height=1,
+    height=2,
     command=select_output_directory  # now this works because function is defined
 )
 ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")

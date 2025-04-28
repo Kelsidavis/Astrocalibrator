@@ -41,6 +41,33 @@ class ToolTip:
             self.tipwindow.destroy()
             self.tipwindow = None
 
+def scale_fonts(event=None):
+    width = root.winfo_width()
+    height = root.winfo_height()
+
+    # Adjust scaling factor based on height
+    if height >= 1000:
+        size_factor = 1.2
+    elif height >= 720:
+        size_factor = 1.0
+    else:
+        size_factor = 0.9
+
+    session_title_label.config(font=("Arial", int(16 * size_factor), "bold"))
+    description_label.config(font=("Arial", int(9 * size_factor)))
+    distance_label.config(font=("Arial", int(9 * size_factor)))
+    progress_label.config(font=("Arial", int(9 * size_factor)))
+    reset_btn.config(font=("Arial", int(10 * size_factor)))
+    light_btn.config(font=("Arial", int(10 * size_factor)))
+    dark_btn.config(font=("Arial", int(10 * size_factor)))
+    flat_btn.config(font=("Arial", int(10 * size_factor)))
+    darkflat_btn.config(font=("Arial", int(10 * size_factor)))
+    bias_btn.config(font=("Arial", int(10 * size_factor)))
+    master_dark_btn.config(font=("Arial", int(10 * size_factor)))
+    master_flat_btn.config(font=("Arial", int(10 * size_factor)))
+    master_bias_btn.config(font=("Arial", int(10 * size_factor)))
+
+
 def save_settings(settings):
     try:
         with open('settings.json', 'w') as f:
@@ -61,6 +88,13 @@ root = tk.Tk()
 # Detect screen resolution
 screen_width = root.winfo_screenwidth()
 screen_height = root.winfo_screenheight()
+
+# Detect DPI scaling
+dpi_scale = root.winfo_fpixels('1i') / 96  # 96 dpi = 100% scaling
+
+def is_small_screen():
+    return screen_height <= 850 or dpi_scale > 1.15
+
 
 # Set default size based on screen height
 if screen_height <= 768:
@@ -272,7 +306,7 @@ def update_ui():
     light_label.config(text=f"{len(light_files)} lights selected")
     dark_label.config(text=f"{len(dark_files)} darks selected")
     flat_label.config(text=f"{len(flat_files)} flats selected")
-    bias_label.config(text=f"{len(flat_files)} flats selected")
+    bias_label.config(text=f"{len(bias_files)} bias selected")
 
 frame_select_container = tk.LabelFrame(root, text="Select calibration input frames", font=("Arial", 9))
 frame_select_container.pack(pady=10, padx=10, fill='x')
@@ -413,15 +447,117 @@ reset_btn = tk.Button(root, text="Reset Options", command=lambda: update_master_
 ToolTip(reset_btn, "Clear all selected frames and reset calibration settings to default.")
 reset_btn.pack(pady=5)
 
-log_frame = tk.Frame(root)
-log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 5))
+def embed_log_into_main_window():
+    global log_embedded, external_log_window, log_frame, log_textbox, scrollbar
 
+    if external_log_window:
+        external_log_window.destroy()
+        external_log_window = None
+
+    # Save existing log content
+    current_log = log_textbox.get('1.0', 'end')
+
+    # Destroy old embedded frame if it exists
+    log_frame.pack_forget()
+
+    # Create a fresh embedded frame in root
+    new_log_frame = tk.Frame(root)
+    new_log_textbox = tk.Text(new_log_frame, wrap='word', height=7)
+    new_scrollbar = ttk.Scrollbar(new_log_frame, command=new_log_textbox.yview)
+    new_log_textbox.config(yscrollcommand=new_scrollbar.set)
+
+    new_log_textbox.pack(side='left', fill='both', expand=True)
+    new_scrollbar.pack(side='right', fill='y')
+    new_log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 5))
+
+    # Restore log contents
+    new_log_textbox.insert('1.0', current_log)
+    new_log_textbox.see('end')
+
+    # Update globals
+    log_frame = new_log_frame
+    log_textbox = new_log_textbox
+    scrollbar = new_scrollbar
+
+    log_embedded = True
+
+# --- Intelligent Log Display ---
+log_frame = tk.Frame()
 log_textbox = tk.Text(log_frame, wrap='word', height=7)
-log_textbox.pack(side='left', fill='both', expand=True)
-
 scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
-scrollbar.pack(side='right', fill='y')
 log_textbox.config(yscrollcommand=scrollbar.set)
+log_textbox.pack(side='left', fill='both', expand=True)
+scrollbar.pack(side='right', fill='y')
+
+external_log_window = None
+log_embedded = None  # Track state: True=embedded, False=external
+
+embed_log_into_main_window()
+
+def pop_log_out_to_window():
+    global log_embedded, external_log_window, log_frame, log_textbox, scrollbar
+
+    if external_log_window:
+        return  # Already popped out
+
+    # Save existing log content
+    current_log = log_textbox.get('1.0', 'end')
+
+    # Create external window
+    external_log_window = tk.Toplevel(root)
+    external_log_window.title("Astrocalibrator Log")
+    external_log_window.geometry("600x300")
+    external_log_window.protocol("WM_DELETE_WINDOW", lambda: None)
+
+    # Create a fresh frame in external window
+    new_log_frame = tk.Frame(external_log_window)
+    new_log_textbox = tk.Text(new_log_frame, wrap='word', height=7)
+    new_scrollbar = ttk.Scrollbar(new_log_frame, command=new_log_textbox.yview)
+    new_log_textbox.config(yscrollcommand=new_scrollbar.set)
+
+    new_log_textbox.pack(side='left', fill='both', expand=True)
+    new_scrollbar.pack(side='right', fill='y')
+    new_log_frame.pack(fill='both', expand=True, padx=5, pady=5)
+
+    # Restore log contents
+    new_log_textbox.insert('1.0', current_log)
+    new_log_textbox.see('end')
+
+    # Update globals
+    log_frame = new_log_frame
+    log_textbox = new_log_textbox
+    scrollbar = new_scrollbar
+
+    log_embedded = False
+
+def on_root_resize(event=None):
+    if event is not None and event.widget != root:
+        return
+
+    root.update_idletasks()
+    current_window_height = root.winfo_height()
+    screen_physical_height = root.winfo_screenheight()
+    dpi_scaling = root.winfo_fpixels('1i') / 96
+
+    effective_window_height = current_window_height / dpi_scaling
+    effective_screen_height = screen_physical_height / dpi_scaling
+
+    if effective_screen_height <= 864 or effective_window_height <= 850:
+        if log_embedded is True:
+            pop_log_out_to_window()
+    else:
+        if log_embedded is False:
+            embed_log_into_main_window()
+
+    # STOP calling update_external_log_position here!
+    # Instead move the external log directly here if it exists:
+    if external_log_window and not log_embedded:
+        root_x = root.winfo_x()
+        root_y = root.winfo_y()
+        root_width = root.winfo_width()
+        log_x = root_x + root_width + 10
+        log_y = root_y
+        external_log_window.geometry(f"600x300+{log_x}+{log_y}")
 
 def browse_file(var):
     path = filedialog.askopenfilename(title="Select Master Calibration Frame", filetypes=[("FITS files", "*.fits")])
@@ -495,7 +631,9 @@ menubar.add_cascade(label="Help", menu=helpmenu)
 # Attach menubar to root window
 root.config(menu=menubar)
 
-root.after(100, toggle_input_state)
+root.bind("<Configure>", scale_fonts)
+root.bind("<Configure>", on_root_resize)
+root.after(100, lambda: on_root_resize(None))
 
 # --- Export GUI components to main.py ---
 __all__ = [
