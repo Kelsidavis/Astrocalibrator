@@ -447,20 +447,39 @@ reset_btn = tk.Button(root, text="Reset Options", command=lambda: update_master_
 ToolTip(reset_btn, "Clear all selected frames and reset calibration settings to default.")
 reset_btn.pack(pady=5)
 
+# Initialize log variables
+log_embedded = True
+external_log_window = None
+log_frame = None
+log_textbox = None
+scrollbar = None
+
+
 def embed_log_into_main_window():
     global log_embedded, external_log_window, log_frame, log_textbox, scrollbar
 
+    # 🛡️ Try to read current log contents safely
+    try:
+        if log_textbox is not None:
+            current_log = log_textbox.get('1.0', 'end')
+        else:
+            current_log = ""
+    except tk.TclError:
+        current_log = ""
+
+    # If external window exists, destroy it
     if external_log_window:
-        external_log_window.destroy()
+        try:
+            external_log_window.destroy()
+        except:
+            pass
         external_log_window = None
 
-    # Save existing log content
-    current_log = log_textbox.get('1.0', 'end')
-
     # Destroy old embedded frame if it exists
-    log_frame.pack_forget()
+    if log_frame is not None:
+        log_frame.pack_forget()
 
-    # Create a fresh embedded frame in root
+    # Create a fresh embedded frame
     new_log_frame = tk.Frame(root)
     new_log_textbox = tk.Text(new_log_frame, wrap='word', height=7)
     new_scrollbar = ttk.Scrollbar(new_log_frame, command=new_log_textbox.yview)
@@ -474,42 +493,48 @@ def embed_log_into_main_window():
     new_log_textbox.insert('1.0', current_log)
     new_log_textbox.see('end')
 
-    # Update globals
+    # Update global references
     log_frame = new_log_frame
     log_textbox = new_log_textbox
     scrollbar = new_scrollbar
 
     log_embedded = True
 
-# --- Intelligent Log Display ---
-log_frame = tk.Frame()
-log_textbox = tk.Text(log_frame, wrap='word', height=7)
-scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
-log_textbox.config(yscrollcommand=scrollbar.set)
-log_textbox.pack(side='left', fill='both', expand=True)
-scrollbar.pack(side='right', fill='y')
-
-external_log_window = None
-log_embedded = None  # Track state: True=embedded, False=external
-
 embed_log_into_main_window()
 
 def pop_log_out_to_window():
     global log_embedded, external_log_window, log_frame, log_textbox, scrollbar
 
+    # Save existing log text if possible
+    try:
+        current_log = log_textbox.get('1.0', 'end')
+    except tk.TclError:
+        current_log = ""
+
+    # If an old external window exists (e.g., hidden, broken), destroy it first
     if external_log_window:
-        return  # Already popped out
+        try:
+            external_log_window.destroy()
+        except:
+            pass
+        external_log_window = None
 
-    # Save existing log content
-    current_log = log_textbox.get('1.0', 'end')
-
-    # Create external window
+    # Create a new external window
     external_log_window = tk.Toplevel(root)
     external_log_window.title("Astrocalibrator Log")
     external_log_window.geometry("600x300")
-    external_log_window.protocol("WM_DELETE_WINDOW", lambda: None)
 
-    # Create a fresh frame in external window
+    def hide_log_window():
+        global external_log_window
+        if external_log_window:
+            external_log_window.withdraw()
+            external_log_window = None
+        log_embedded = True
+        embed_log_into_main_window()
+
+    external_log_window.protocol("WM_DELETE_WINDOW", hide_log_window)
+
+    # Create a fresh frame inside the external window
     new_log_frame = tk.Frame(external_log_window)
     new_log_textbox = tk.Text(new_log_frame, wrap='word', height=7)
     new_scrollbar = ttk.Scrollbar(new_log_frame, command=new_log_textbox.yview)
@@ -519,11 +544,11 @@ def pop_log_out_to_window():
     new_scrollbar.pack(side='right', fill='y')
     new_log_frame.pack(fill='both', expand=True, padx=5, pady=5)
 
-    # Restore log contents
+    # Restore saved log content
     new_log_textbox.insert('1.0', current_log)
     new_log_textbox.see('end')
 
-    # Update globals
+    # Update references
     log_frame = new_log_frame
     log_textbox = new_log_textbox
     scrollbar = new_scrollbar
@@ -631,8 +656,11 @@ menubar.add_cascade(label="Help", menu=helpmenu)
 # Attach menubar to root window
 root.config(menu=menubar)
 
-root.bind("<Configure>", scale_fonts)
-root.bind("<Configure>", on_root_resize)
+def handle_root_configure(event=None):
+    scale_fonts(event)
+    on_root_resize(event)
+
+root.bind("<Configure>", handle_root_configure)
 root.after(100, lambda: on_root_resize(None))
 
 # --- Export GUI components to main.py ---
