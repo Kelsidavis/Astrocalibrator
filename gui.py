@@ -41,6 +41,26 @@ class ToolTip:
             self.tipwindow.destroy()
             self.tipwindow = None
 
+def toggle_log():
+    if log_embedded:
+        pop_log_out_to_window()
+    else:
+        dock_log()
+
+
+def dock_log():
+    global external_log_window
+
+    if external_log_window:
+        try:
+            external_log_window.destroy()
+        except:
+            pass
+        external_log_window = None
+
+    embed_log_into_main_window()
+
+
 def scale_fonts(event=None):
     width = root.winfo_width()
     height = root.winfo_height()
@@ -77,13 +97,27 @@ def save_settings(settings):
 
 
 def log_message(msg):
+    global saved_log_content
     print(msg)
-    log_textbox.after(0, lambda: (
-        log_textbox.insert('end', msg + '\n'),
-        log_textbox.see('end')
-    ))
+    if log_textbox:
+        log_textbox.after(0, lambda: (
+            log_textbox.insert('end', msg + '\n'),
+            log_textbox.see('end'),
+            update_saved_log()
+        ))
+
+def update_saved_log():
+    global saved_log_content
+    if log_textbox:
+        try:
+            saved_log_content = log_textbox.get('1.0', 'end-1c')
+        except:
+            pass
 
 root = tk.Tk()
+
+toggle_log_button = tk.Button(root, text="Pop Out Log", command=toggle_log)
+toggle_log_button.pack(pady=5)
 
 # Detect screen resolution
 screen_width = root.winfo_screenwidth()
@@ -447,27 +481,35 @@ reset_btn = tk.Button(root, text="Reset Options", command=lambda: update_master_
 ToolTip(reset_btn, "Clear all selected frames and reset calibration settings to default.")
 reset_btn.pack(pady=5)
 
-# Initialize log variables
+# Globals
 log_embedded = True
 external_log_window = None
 log_frame = None
 log_textbox = None
 scrollbar = None
+saved_log_content = ""
+
+def get_current_log_content():
+    global saved_log_content
+    if log_textbox:
+        try:
+            saved_log_content = log_textbox.get('1.0', 'end-1c')
+        except:
+            pass
+    return saved_log_content
 
 
 def embed_log_into_main_window():
-    global log_embedded, external_log_window, log_frame, log_textbox, scrollbar
+    global log_embedded, external_log_window, log_frame, log_textbox, scrollbar, saved_log_content
 
-    # 🛡️ Try to read current log contents safely
-    try:
-        if log_textbox is not None:
-            current_log = log_textbox.get('1.0', 'end')
-        else:
-            current_log = ""
-    except tk.TclError:
-        current_log = ""
+    get_current_log_content()  # 🔥 Update saved_log_content before switching
 
-    # If external window exists, destroy it
+    if log_frame:
+        try:
+            log_frame.destroy()
+        except:
+            pass
+
     if external_log_window:
         try:
             external_log_window.destroy()
@@ -475,114 +517,62 @@ def embed_log_into_main_window():
             pass
         external_log_window = None
 
-    # Destroy old embedded frame if it exists
-    if log_frame is not None:
-        log_frame.pack_forget()
+    log_frame = tk.Frame(root)
+    log_textbox = tk.Text(log_frame, wrap='word', height=7)
+    scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
+    log_textbox.config(yscrollcommand=scrollbar.set)
 
-    # Create a fresh embedded frame
-    new_log_frame = tk.Frame(root)
-    new_log_textbox = tk.Text(new_log_frame, wrap='word', height=7)
-    new_scrollbar = ttk.Scrollbar(new_log_frame, command=new_log_textbox.yview)
-    new_log_textbox.config(yscrollcommand=new_scrollbar.set)
+    log_textbox.pack(side='left', fill='both', expand=True)
+    scrollbar.pack(side='right', fill='y')
+    log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 5))
 
-    new_log_textbox.pack(side='left', fill='both', expand=True)
-    new_scrollbar.pack(side='right', fill='y')
-    new_log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 5))
-
-    # Restore log contents
-    new_log_textbox.insert('1.0', current_log)
-    new_log_textbox.see('end')
-
-    # Update global references
-    log_frame = new_log_frame
-    log_textbox = new_log_textbox
-    scrollbar = new_scrollbar
+    # 📝 Always restore from saved_log_content
+    log_textbox.insert('1.0', saved_log_content)
+    log_textbox.mark_set("insert", "end")
+    log_textbox.focus()
+    log_textbox.see('end')
 
     log_embedded = True
-
-embed_log_into_main_window()
+    toggle_log_button.config(text="Pop Out Log")
 
 def pop_log_out_to_window():
     global log_embedded, external_log_window, log_frame, log_textbox, scrollbar
 
-    # Save existing log text if possible
-    try:
-        current_log = log_textbox.get('1.0', 'end')
-    except tk.TclError:
-        current_log = ""
-
-    # If an old external window exists (e.g., hidden, broken), destroy it first
-    if external_log_window:
+    # 🛑 Capture log text BEFORE destroying anything
+    current_log = ""
+    if log_textbox:
         try:
-            external_log_window.destroy()
+            current_log = log_textbox.get('1.0', 'end-1c')  # no trailing newline
         except:
             pass
-        external_log_window = None
 
-    # Create a new external window
+    if log_frame:
+        try:
+            log_frame.destroy()
+        except:
+            pass
+
     external_log_window = tk.Toplevel(root)
     external_log_window.title("Astrocalibrator Log")
     external_log_window.geometry("600x300")
+    external_log_window.protocol("WM_DELETE_WINDOW", dock_log)
 
-    def hide_log_window():
-        global external_log_window
-        if external_log_window:
-            external_log_window.withdraw()
-            external_log_window = None
-        log_embedded = True
-        embed_log_into_main_window()
+    log_frame = tk.Frame(external_log_window)
+    log_textbox = tk.Text(log_frame, wrap='word', height=7)
+    scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
+    log_textbox.config(yscrollcommand=scrollbar.set)
 
-    external_log_window.protocol("WM_DELETE_WINDOW", hide_log_window)
+    log_textbox.pack(side='left', fill='both', expand=True)
+    scrollbar.pack(side='right', fill='y')
+    log_frame.pack(fill='both', expand=True, padx=10, pady=(0, 5))
 
-    # Create a fresh frame inside the external window
-    new_log_frame = tk.Frame(external_log_window)
-    new_log_textbox = tk.Text(new_log_frame, wrap='word', height=7)
-    new_scrollbar = ttk.Scrollbar(new_log_frame, command=new_log_textbox.yview)
-    new_log_textbox.config(yscrollcommand=new_scrollbar.set)
-
-    new_log_textbox.pack(side='left', fill='both', expand=True)
-    new_scrollbar.pack(side='right', fill='y')
-    new_log_frame.pack(fill='both', expand=True, padx=5, pady=5)
-
-    # Restore saved log content
-    new_log_textbox.insert('1.0', current_log)
-    new_log_textbox.see('end')
-
-    # Update references
-    log_frame = new_log_frame
-    log_textbox = new_log_textbox
-    scrollbar = new_scrollbar
+    # 📝 Restore saved log
+    if current_log:
+        log_textbox.insert('1.0', current_log)
+    log_textbox.see('end')
 
     log_embedded = False
-
-def on_root_resize(event=None):
-    if event is not None and event.widget != root:
-        return
-
-    root.update_idletasks()
-    current_window_height = root.winfo_height()
-    screen_physical_height = root.winfo_screenheight()
-    dpi_scaling = root.winfo_fpixels('1i') / 96
-
-    effective_window_height = current_window_height / dpi_scaling
-    effective_screen_height = screen_physical_height / dpi_scaling
-
-    if effective_screen_height <= 864 or effective_window_height <= 850:
-        if log_embedded is True:
-            pop_log_out_to_window()
-    else:
-        if log_embedded is False:
-            embed_log_into_main_window()
-
-    # STOP calling update_external_log_position here!
-    # Instead move the external log directly here if it exists:
-    if external_log_window and not log_embedded:
-        root_x = root.winfo_x()
-        root_y = root.winfo_y()
-        root_width = root.winfo_width()
-        log_x = root_x + root_width + 10
-        log_y = root_y
-        external_log_window.geometry(f"600x300+{log_x}+{log_y}")
+    toggle_log_button.config(text="Dock Log")
 
 def browse_file(var):
     path = filedialog.askopenfilename(title="Select Master Calibration Frame", filetypes=[("FITS files", "*.fits")])
@@ -658,10 +648,9 @@ root.config(menu=menubar)
 
 def handle_root_configure(event=None):
     scale_fonts(event)
-    on_root_resize(event)
 
-root.bind("<Configure>", handle_root_configure)
-root.after(100, lambda: on_root_resize(None))
+# Set up initial log docking based on screen size
+root.after(100, lambda: pop_log_out_to_window() if is_small_screen() else embed_log_into_main_window())
 
 # --- Export GUI components to main.py ---
 __all__ = [
