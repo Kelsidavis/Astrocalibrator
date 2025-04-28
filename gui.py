@@ -6,6 +6,10 @@ from urllib.request import urlopen
 from PIL import Image, ImageTk
 import io
 
+toggle_log_frame = None
+toggle_log_button = None
+
+
 # Tooltip helper
 class ToolTip:
     def __init__(self, widget, text):
@@ -122,9 +126,6 @@ def update_saved_log():
 root = tk.Tk()
 
 output_folder_var = tk.StringVar()
-
-toggle_log_button = tk.Button(root, text="Pop Out Log", command=toggle_log)
-toggle_log_button.pack(pady=5)
 
 # Detect screen resolution
 screen_width = root.winfo_screenwidth()
@@ -506,17 +507,38 @@ def get_current_log_content():
             pass
     return saved_log_content
 
+def shrink_root_for_log_popout():
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    root.geometry(f"{width}x{height-160}")
+
+def expand_root_for_log_dock():
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    root.geometry(f"{width}x{height+160}")
 
 def embed_log_into_main_window():
     global log_embedded, external_log_window, log_frame, log_textbox, scrollbar, saved_log_content
+    global toggle_log_frame, toggle_log_button   # ✅ ADD THIS
 
-    get_current_log_content()  # 🔥 Update saved_log_content before switching
+    get_current_log_content()
+
+    # 🔥 Destroy old toggle_log_frame if it exists
+    if toggle_log_frame:
+        try:
+            toggle_log_frame.destroy()
+        except:
+            pass
+        toggle_log_frame = None
 
     if log_frame:
         try:
             log_frame.destroy()
         except:
             pass
+        log_frame = None
 
     if external_log_window:
         try:
@@ -525,6 +547,13 @@ def embed_log_into_main_window():
             pass
         external_log_window = None
 
+    # 🛠 Create new toggle_log_frame and button
+    toggle_log_frame = tk.Frame(root)
+    toggle_log_button = tk.Button(toggle_log_frame, text="Pop Out Log", command=toggle_log)
+    toggle_log_button.pack(side='left', padx=(10,0))
+    toggle_log_frame.pack(fill='x', pady=(5, 0), padx=10)
+
+    # 🛠 Create new log frame and textbox
     log_frame = tk.Frame(root)
     log_textbox = tk.Text(log_frame, wrap='word', height=7)
     scrollbar = ttk.Scrollbar(log_frame, command=log_textbox.yview)
@@ -534,7 +563,7 @@ def embed_log_into_main_window():
     scrollbar.pack(side='right', fill='y')
     log_frame.pack(side='bottom', fill='both', expand=True, padx=10, pady=(0, 5))
 
-    # 📝 Always restore from saved_log_content
+    # Restore saved log content
     log_textbox.insert('1.0', saved_log_content)
     log_textbox.mark_set("insert", "end")
     log_textbox.focus()
@@ -542,23 +571,46 @@ def embed_log_into_main_window():
 
     log_embedded = True
     toggle_log_button.config(text="Pop Out Log")
+    # 🔥 EXPAND window
+    expand_root_for_log_dock()
 
 def pop_log_out_to_window():
-    global log_embedded, external_log_window, log_frame, log_textbox, scrollbar
+    global log_embedded, external_log_window, log_frame, log_textbox, scrollbar, toggle_log_frame, toggle_log_button
 
-    # 🛑 Capture log text BEFORE destroying anything
+    # Capture log text BEFORE destroying anything
     current_log = ""
     if log_textbox:
         try:
-            current_log = log_textbox.get('1.0', 'end-1c')  # no trailing newline
+            current_log = log_textbox.get('1.0', 'end-1c')
         except:
             pass
 
+    # Destroy log frames
     if log_frame:
         try:
             log_frame.destroy()
         except:
             pass
+        log_frame = None
+
+    if toggle_log_frame:
+        try:
+            toggle_log_frame.destroy()
+        except:
+            pass
+        toggle_log_frame = None
+        toggle_log_button = None
+
+    # Force window to recompute now
+    root.update_idletasks()
+    root.update()
+
+    # Dynamically shrink window
+    new_width = root.winfo_reqwidth()
+    new_height = root.winfo_reqheight()
+
+    root.geometry(f"{new_width}x{new_height}")
+    root.minsize(new_width, new_height)
 
     external_log_window = tk.Toplevel(root)
     external_log_window.title("Astrocalibrator Log")
@@ -574,13 +626,12 @@ def pop_log_out_to_window():
     scrollbar.pack(side='right', fill='y')
     log_frame.pack(fill='both', expand=True, padx=10, pady=(0, 5))
 
-    # 📝 Restore saved log
     if current_log:
         log_textbox.insert('1.0', current_log)
     log_textbox.see('end')
 
     log_embedded = False
-    toggle_log_button.config(text="Dock Log")
+
 
 def browse_file(var):
     path = filedialog.askopenfilename(title="Select Master Calibration Frame", filetypes=[("FITS files", "*.fits")])
