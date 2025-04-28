@@ -18,7 +18,7 @@ class ToolTip:
         self.tipwindow = None
         self.id = None
         self.widget.bind("<Enter>", self.schedule_showtip)
-        self.widget.bind("<Leave>", self.hidetip)
+        self.widget.bind("<Leave>", self.hidetip) 
 
     def schedule_showtip(self, event=None):
         self.id = self.widget.after(500, self.showtip)  # Delay tooltip popup
@@ -323,15 +323,8 @@ def select_files(file_list, label, expected_type=None):
 
                     root.config(cursor="")  # ✅ Restore normal cursor
 
-                    # ✅ ✅ ONLY after successfully updating, then start solving
                     if expected_type == "LIGHT":
-                        if output_folder_var.get():
-                            from main import run_plate_solving  # <-- ADD THIS LINE *HERE* INSIDE THE IF BLOCK
-                            log_message("🚀 Lights selected. Preparing plate solving...")
-                            run_plate_solving()
-                        else:
-                            log_message("⚠️ Please select output folder before plate solving.")
-                            messagebox.showwarning("Output Folder Needed", "⚠️ Please select an output folder before plate solving.")
+                        root.after(1000, try_run_plate_solving)
 
                 root.after(0, update_ui)
 
@@ -707,6 +700,14 @@ root.config(menu=menubar)
 
 def handle_root_configure(event=None):
     scale_fonts(event)
+
+def try_run_plate_solving():
+    from main import run_plate_solving
+    if output_folder_var.get() and light_files:
+        log_message("🚀 Lights selected. Preparing plate solving...")
+        run_plate_solving()
+    else:
+        log_message("⚠️ Output folder not selected. Cannot start solving yet.")
 
 # Set up initial log docking based on screen size
 root.after(100, lambda: pop_log_out_to_window() if is_small_screen() else embed_log_into_main_window())
