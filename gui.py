@@ -125,38 +125,16 @@ def update_saved_log():
 
 root = tk.Tk()
 
-output_folder_var = tk.StringVar()
+# Set window title and icon (already in your code)
+root.title("Astrocalibrator")
 
-# Detect screen resolution
-screen_width = root.winfo_screenwidth()
-screen_height = root.winfo_screenheight()
+output_folder_var = tk.StringVar()
 
 # Detect DPI scaling
 dpi_scale = root.winfo_fpixels('1i') / 96  # 96 dpi = 100% scaling
 
 def is_small_screen():
     return screen_height <= 850 or dpi_scale > 1.15
-
-
-# Set default size based on screen height
-if screen_height <= 768:
-    # Small screens (720p, small laptops)
-    window_width = 800
-    window_height = 620
-elif screen_height <= 900:
-    # Medium screens (older monitors)
-    window_width = 850
-    window_height = 720
-else:
-    # Big screens (1080p and larger)
-    window_width = 950
-    window_height = 900
-
-# Center window on screen
-x = (screen_width // 2) - (window_width // 2)
-y = (screen_height // 2) - (window_height // 2)
-root.geometry(f"{window_width}x{window_height}+{x}+{y}")
-root.minsize(750, 600)  # Optional: prevent making it too tiny manually
 
 # Set custom icon from local file
 try:
@@ -564,8 +542,6 @@ def embed_log_into_main_window():
 
     log_embedded = True
     toggle_log_button.config(text="Pop Out Log")
-    # 🔥 EXPAND window
-    expand_root_for_log_dock()
 
 def pop_log_out_to_window():
     global log_embedded, external_log_window, log_frame, log_textbox, scrollbar, toggle_log_frame, toggle_log_button
@@ -578,7 +554,7 @@ def pop_log_out_to_window():
         except:
             pass
 
-    # Destroy log frames
+    # Destroy old frames
     if log_frame:
         try:
             log_frame.destroy()
@@ -594,21 +570,22 @@ def pop_log_out_to_window():
         toggle_log_frame = None
         toggle_log_button = None
 
-    # Force window to recompute now
     root.update_idletasks()
     root.update()
 
-    # Dynamically shrink window
-    new_width = root.winfo_reqwidth()
-    new_height = root.winfo_reqheight()
-
-    root.geometry(f"{new_width}x{new_height}")
-    root.minsize(new_width, new_height)
-
+    # Create external log window
     external_log_window = tk.Toplevel(root)
     external_log_window.title("Astrocalibrator Log")
     external_log_window.geometry("600x300")
     external_log_window.protocol("WM_DELETE_WINDOW", dock_log)
+
+    # 🛠 New Position: next to main window
+    root_x = root.winfo_x()
+    root_y = root.winfo_y()
+    root_width = root.winfo_width()
+    external_x = root_x + root_width + 10  # 10 pixels right
+    external_y = root_y
+    external_log_window.geometry(f"+{external_x}+{external_y}")
 
     log_frame = tk.Frame(external_log_window)
     log_textbox = tk.Text(log_frame, wrap='word', height=7)
@@ -701,6 +678,16 @@ root.config(menu=menubar)
 def handle_root_configure(event=None):
     scale_fonts(event)
 
+def finalize_window_size():
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    root.geometry(f"{width}x{height}+{root.winfo_x()}+{root.winfo_y()}")
+    root.minsize(width, height)
+    root.maxsize(width, height)
+
+root.after(200, finalize_window_size)
+
 def try_run_plate_solving():
     from main import run_plate_solving
     if output_folder_var.get() and light_files:
@@ -711,6 +698,17 @@ def try_run_plate_solving():
 
 # Set up initial log docking based on screen size
 root.after(100, pop_log_out_to_window)
+
+# Now we resize and center properly
+window_width = 450
+window_height = 620
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+x = (screen_width // 2) - (window_width // 2)
+y = (screen_height // 2) - (window_height // 2)
+root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+root.minsize(window_width, window_height)
+root.maxsize(window_width, window_height)
 
 # --- Export GUI components to main.py ---
 __all__ = [
