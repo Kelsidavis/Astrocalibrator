@@ -710,7 +710,7 @@ def try_run_plate_solving():
         log_message("⚠️ Output folder not selected. Cannot start solving yet.")
 
 # Set up initial log docking based on screen size
-root.after(100, lambda: pop_log_out_to_window() if is_small_screen() else embed_log_into_main_window())
+root.after(100, pop_log_out_to_window)
 
 # --- Export GUI components to main.py ---
 __all__ = [
