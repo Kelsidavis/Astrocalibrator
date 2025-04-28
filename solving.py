@@ -9,14 +9,6 @@ from astropy import units as u
 from calibration import load_fits_by_filter
 from messier_catalog import MESSIER_CATALOG
 
-# Adjustable Settings
-PIXEL_SIZE_MICRONS = 3.00   # <-- Default pixel size of camera in microns
-FOCAL_LENGTH_MM = 700       # <-- Default telescope focal length in mm
-
-def calculate_pixel_scale():
-    """Calculate pixel scale (arcseconds per pixel)."""
-    return (206.265 * PIXEL_SIZE_MICRONS) / FOCAL_LENGTH_MM
-
 def cleanup_wcs_file(wcs_path):
     try:
         if os.path.exists(wcs_path):
@@ -108,28 +100,3 @@ def plate_solve_and_update_header(fits_path, log_message):
         import traceback
         print(f"💥 Fatal crash in plate_solve_and_update_header: {e} {traceback.format_exc()}")
         raise
-
-def open_pixel_settings_window():
-    import tkinter as tk
-    from tkinter import simpledialog, messagebox
-
-    global PIXEL_SIZE_MICRONS, FOCAL_LENGTH_MM
-
-    root = tk.Tk()
-    root.withdraw()  # Hide the main root window
-
-    try:
-        pixel_size = simpledialog.askfloat("Pixel Size", "Enter pixel size (microns):", initialvalue=PIXEL_SIZE_MICRONS)
-        focal_length = simpledialog.askfloat("Focal Length", "Enter focal length (mm):", initialvalue=FOCAL_LENGTH_MM)
-
-        if pixel_size and focal_length:
-            PIXEL_SIZE_MICRONS = pixel_size
-            FOCAL_LENGTH_MM = focal_length
-            messagebox.showinfo("Settings Updated", f"New pixel scale: {calculate_pixel_scale():.2f} arcsec/pixel")
-        else:
-            messagebox.showwarning("Settings Cancelled", "No changes made.")
-
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to update settings: {e}")
-
-    root.destroy()
