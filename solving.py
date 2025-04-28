@@ -17,6 +17,14 @@ def calculate_pixel_scale():
     """Calculate pixel scale (arcseconds per pixel)."""
     return (206.265 * PIXEL_SIZE_MICRONS) / FOCAL_LENGTH_MM
 
+def cleanup_wcs_file(wcs_path):
+    try:
+        if os.path.exists(wcs_path):
+            os.remove(wcs_path)
+            print(f"🧹 Deleted temporary WCS file: {wcs_path}")
+    except Exception as e:
+        print(f"⚠️ Failed to delete WCS file: {e}")
+
 def query_object_name(ra_deg, dec_deg, log_message):
     coord = SkyCoord(ra=ra_deg*u.degree, dec=dec_deg*u.degree, frame='icrs')
     try:
@@ -91,6 +99,9 @@ def plate_solve_and_update_header(fits_path, log_message):
         session_name = query_object_name(crval1, crval2, log_message)
 
         print(f"📅 Session: Imaging Session: {session_name}")
+        # After successful solve and name lookup, cleanup WCS file
+        wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
+        cleanup_wcs_file(wcs_file)
         return session_name
 
     except Exception as e:

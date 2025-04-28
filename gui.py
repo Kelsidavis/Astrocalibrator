@@ -47,6 +47,11 @@ def toggle_log():
     else:
         dock_log()
 
+def select_output_folder():
+    path = filedialog.askdirectory(title="Select Output Folder")
+    if path:
+        output_folder_var.set(path)
+        log_message(f"📂 Output folder set to: {path}")
 
 def dock_log():
     global external_log_window
@@ -115,6 +120,8 @@ def update_saved_log():
             pass
 
 root = tk.Tk()
+
+output_folder_var = tk.StringVar()
 
 toggle_log_button = tk.Button(root, text="Pop Out Log", command=toggle_log)
 toggle_log_button.pack(pady=5)
@@ -226,8 +233,6 @@ description_label.pack()
 distance_label = tk.Label(session_info_frame, textvariable=object_distance_var, font=("Arial", 9))
 distance_label.pack()
 
-
-output_folder_var = tk.StringVar()
 max_threads_var = tk.IntVar(value=os.cpu_count())
 progress_var = tk.DoubleVar()
 
@@ -433,51 +438,54 @@ def toggle_input_state():
         bias_btn.config(state=tk.NORMAL)
         bias_label.config(text="No files")
 
-def update_master_inputs():
-    # Reset visible labels
-    light_label.config(text="No files")
-    dark_label.config(text="No files")
-    flat_label.config(text="No files")
-    darkflat_label.config(text="No files")
-    bias_label.config(text="No files")
+def full_reset():
+    # Reset session fields
+    session_title_var.set("Welcome to Astrocalibrator!")
     object_description_var.set("")
     object_distance_var.set("")
-    master_dark_label.config(text="No master selected")
-    master_flat_label.config(text="No master selected")
-    master_bias_label.config(text="No master selected")
 
-    # Clear file lists
+    # Reset progress bar
+    progress_var.set(0)
+    progress_label_var.set("Idle")
+    progress_bar.stop()
+    progress_bar.config(mode="determinate")
+
+    # Clear frame file lists
     light_files.clear()
     dark_files.clear()
     flat_files.clear()
     dark_flat_files.clear()
     bias_files.clear()
 
-    # Reset internal paths
+    # Clear labels next to buttons
+    light_label.config(text="No files")
+    dark_label.config(text="No files")
+    flat_label.config(text="No files")
+    darkflat_label.config(text="No files")
+    bias_label.config(text="No files")
+
+    # Reset master frames
     master_dark_path.set("")
     master_flat_path.set("")
     master_bias_path.set("")
-    output_folder_var.set("")
-    session_title_var.set("Welcome to Astrocalibrator!")
-
-    # Reset master enabled states
+    master_dark_label.config(text="No master selected")
+    master_flat_label.config(text="No master selected")
+    master_bias_label.config(text="No master selected")
     master_dark_enabled.set(False)
     master_flat_enabled.set(False)
     master_bias_enabled.set(False)
 
-    # Clear logs
-    log_textbox.delete('1.0', tk.END)
+    # Clear log window
+    if log_textbox:
+        log_textbox.delete('1.0', tk.END)
 
-    # 🔥 Now safely toggle input state after everything is cleaned
+    # Output folder remains unchanged!
+
     root.after(10, toggle_input_state)
 
-    # 🔥 Slight delay before showing "Reset Complete" message
-    root.after(100, lambda: messagebox.showinfo(
-        "Reset Complete",
-        "✅ All settings, selections, and logs have been reset."
-    ))
+    log_message("🔄 Reset complete. Output folder unchanged.")
 
-reset_btn = tk.Button(root, text="Reset Options", command=lambda: update_master_inputs())
+reset_btn = tk.Button(root, text="Reset Options", command=full_reset)
 ToolTip(reset_btn, "Clear all selected frames and reset calibration settings to default.")
 reset_btn.pack(pady=5)
 

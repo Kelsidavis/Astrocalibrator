@@ -31,6 +31,8 @@ from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
+import glob
+
 
 # Configure a custom Progressbar style to make it visible
 style = ttk.Style()
@@ -41,6 +43,17 @@ style.configure(
     troughcolor="#333333",       # Dark background
     background="#4CAF50"         # Green moving bar
 )
+
+def global_cleanup(output_folder):
+    """Delete leftover .wcs and .ini files from output folder."""
+    patterns = ["*.wcs", "*.ini"]  # file types to delete
+    for pattern in patterns:
+        for file_path in glob.glob(os.path.join(output_folder, pattern)):
+            try:
+                os.remove(file_path)
+                print(f"🧹 Deleted leftover file: {file_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to delete {file_path}: {e}")
 
 def generate_fallback_name(header=None):
     date_stamp = datetime.now().strftime("%Y-%m-%d")
@@ -104,20 +117,36 @@ def select_output_directory():
         master_flat_btn.config(state='normal')
         master_bias_btn.config(state='normal')
 
-# ✅ Now create output folder frame ONCE
+# ✅ Create the main output folder frame
 output_folder_frame = tk.Frame(root)
 output_folder_frame.pack(pady=(5, 0))
 
+# ✅ Button to select output folder
 select_output_btn = tk.Button(
     output_folder_frame,
     text="Select Output Folder",
     font=("Arial", 10, "bold"),
     width=18,
     height=2,
-    command=select_output_directory  # now this works because function is defined
+    command=select_output_directory
 )
 ToolTip(select_output_btn, "Choose where calibrated and solved files will be saved.")
 select_output_btn.pack(padx=10, pady=5)
+
+# ✅ Now create a sub-frame to hold the output path label
+current_output_frame = tk.Frame(output_folder_frame)
+current_output_frame.pack(fill='x', padx=10)
+
+current_output_label = tk.Label(
+    current_output_frame,
+    textvariable=output_folder_var,
+    font=("Arial", 8),
+    anchor='w',
+    justify='left',
+    wraplength=600,
+    fg="gray"
+)
+current_output_label.pack(fill='x')
 
 def find_nearest_known_object(fits_path, catalog):
     try:
@@ -479,6 +508,8 @@ def check_solve_and_calibrate_results(result_queue):
         solve_btn.config(state='normal')
         calibrate_btn.config(state='normal')
         log_message(f"✅ Solve + Calibrate complete.")
+        global_cleanup(output_folder_var.get())
+        log_message("🧹 Global cleanup complete.")
 
 def start_processing():
     if not output_folder_var.get():
