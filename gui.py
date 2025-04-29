@@ -5,6 +5,26 @@ import webbrowser
 from urllib.request import urlopen
 from PIL import Image, ImageTk
 import io
+import json
+
+# Settings management: safe AppData location
+SETTINGS_FILE = os.path.join(os.getenv('APPDATA'), 'Astrocalibrator', 'settings.json')
+os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+
+def load_settings():
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_settings(data):
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        print(f"⚠️ Failed to save settings: {e}")
+
 
 global_icon_photo = None
 toggle_log_frame = None
@@ -95,15 +115,6 @@ def scale_fonts(event=None):
     master_dark_btn.config(font=("Arial", int(10 * size_factor)))
     master_flat_btn.config(font=("Arial", int(10 * size_factor)))
     master_bias_btn.config(font=("Arial", int(10 * size_factor)))
-
-
-def save_settings(settings):
-    try:
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f, indent=4)
-    except Exception as e:
-        print(f"⚠️ Failed to save settings: {e}")
-
 
 def log_message(msg):
     global saved_log_content
@@ -231,13 +242,8 @@ master_bias_path = tk.StringVar()
 
 astap_path_var = tk.StringVar()
 
-# Load settings.json at startup
-try:
-    import json
-    with open('settings.json', 'r') as f:
-        user_settings = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    user_settings = {}
+# Load user settings
+user_settings = load_settings()
 
     # Enforce default ASTAP path if missing
 if 'astap_path' not in user_settings:
