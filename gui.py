@@ -6,9 +6,9 @@ from urllib.request import urlopen
 from PIL import Image, ImageTk
 import io
 
+global_icon_photo = None
 toggle_log_frame = None
 toggle_log_button = None
-
 
 # Tooltip helper
 class ToolTip:
@@ -141,8 +141,11 @@ try:
     icon_image = Image.open("icon.png").resize((32, 32))
     icon_photo = ImageTk.PhotoImage(icon_image)
     root.iconphoto(False, icon_photo)
+    global_icon_photo = icon_photo 
 except Exception as e:
     print(f"Could not load window icon: {e}")
+    global_icon_photo = None
+
 
 def show_about():
     def start_move(event):
@@ -576,6 +579,8 @@ def pop_log_out_to_window():
     # Create external log window
     external_log_window = tk.Toplevel(root)
     external_log_window.title("Astrocalibrator Log")
+    if global_icon_photo:
+        external_log_window.iconphoto(False, global_icon_photo)
     external_log_window.geometry("600x300")
     external_log_window.protocol("WM_DELETE_WINDOW", dock_log)
 
