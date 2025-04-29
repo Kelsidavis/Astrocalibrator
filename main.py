@@ -244,14 +244,15 @@ def _calibration_worker():
     import time
     start_time = time.time()
     progress_label_var.set("Calibrating frames...")
-    # Restore object info during calibration
+
+    # Restore object info if cached
     if cached_object_description:
         object_description_var.set(cached_object_description)
     if cached_object_distance:
         object_distance_var.set(cached_object_distance)
 
     progress_bar.config(mode="indeterminate")
-    progress_bar.start(10)  # move every 10ms
+    progress_bar.start(10)
     method = 'median'
 
     first_light_path = next(iter(light_files), None)
@@ -259,8 +260,6 @@ def _calibration_worker():
         log_message("❌ No light frames found.")
         if calibrate_btn:
             calibrate_btn.config(state='normal')
-        else:
-            log_message("⚠️ Calibrate button not yet available to re-enable.")
         return
 
     output_folder = output_folder_var.get()
@@ -268,14 +267,15 @@ def _calibration_worker():
     os.makedirs(temp_folder, exist_ok=True)
 
     run_parallel_calibration(
-    light_images=light_files,
-    dark_images=dark_files,
-    flat_images=flat_files,
-    bias_images=bias_files,
-    output_folder=output_folder,
-    session_title=session_title_var.get(),
-    log_callback=log_message  # <-- NEW
-)
+        light_images=light_files,
+        dark_images=dark_files,
+        flat_images=flat_files,
+        bias_images=bias_files,
+        output_folder=output_folder,
+        session_title=session_title_var.get(),
+        log_callback=log_message
+    )
+
     progress_label_var.set("Complete!")
     elapsed = time.time() - start_time
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
@@ -296,12 +296,45 @@ def _calibration_worker():
     calibrate_btn.config(state='normal')
     progress_label_var.set("Idle")
     fade_out_progress_label()
-    # --- Restore cached object info again after calibration finishes ---
+
+    # Restore cached object info
     if cached_object_description:
         object_description_var.set(cached_object_description)
     if cached_object_distance:
         object_distance_var.set(cached_object_distance)
 
+    # --- New: Create output ZIP archive with session name and imaging date ---
+    try:
+        final_output_folder = output_folder_var.get()
+        session_name_cleaned = session_title_var.get().replace(' ', '_').replace(':', '').replace('/', '_')
+
+        # 🗓 Extract DATE-OBS from the first light frame
+        first_light = next(iter(light_files), None)
+        if first_light:
+            with fits.open(first_light) as hdul:
+                header = hdul[0].header
+                date_obs = header.get('DATE-OBS') or header.get('DATE') or header.get('DATEOBS')
+                if date_obs:
+                    imaging_date = date_obs.split('T')[0]  # Only YYYY-MM-DD
+                else:
+                    imaging_date = datetime.now().strftime("%Y-%m-%d")
+        else:
+            imaging_date = datetime.now().strftime("%Y-%m-%d")
+
+        zip_filename = os.path.join(final_output_folder, f"{session_name_cleaned}_{imaging_date}_calibrated.zip")
+
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root_dir, _, files in os.walk(final_output_folder):
+                for file in files:
+                    if file.endswith('.fits'):
+                        file_path = os.path.join(root_dir, file)
+                        arcname = os.path.relpath(file_path, final_output_folder)
+                        zipf.write(file_path, arcname)
+
+        log_message(f"📦 Created ZIP archive: {zip_filename}")
+
+    except Exception as e:
+        log_message(f"⚠️ Failed to create ZIP archive: {e}")
 
 def run_calibration_pipeline():
 

@@ -32,6 +32,27 @@ def query_object_name(ra_deg, dec_deg, log_message):
         log_message(f"⚠️ Simbad query failed: {e}")
         return "Unknown Object"
 
+def parse_wcs_sidecar(wcs_path):
+    """Extract WCS information (CRVAL, CD matrix) from ASTAP .wcs file."""
+    wcs_data = {}
+    try:
+        with open(wcs_path, 'r') as f:
+            for line in f:
+                if 'RA center' in line:
+                    wcs_data['CRVAL1'] = float(line.split(':')[1].strip())
+                elif 'DEC center' in line:
+                    wcs_data['CRVAL2'] = float(line.split(':')[1].strip())
+                elif 'Pixel scale' in line:
+                    pixel_scale_arcsec = float(line.split(':')[1].split()[0])
+                    wcs_data['CDELT1'] = -pixel_scale_arcsec / 3600.0  # Negative for image orientation
+                    wcs_data['CDELT2'] = pixel_scale_arcsec / 3600.0
+                elif 'Field rotation' in line:
+                    rotation = float(line.split(':')[1].strip())
+                    wcs_data['CROTA2'] = rotation
+    except Exception as e:
+        print(f"⚠️ Failed to parse .wcs file: {e}")
+    return wcs_data
+
 def plate_solve_and_update_header(fits_path, log_message):
     try:
         print("👣 Entered plate_solve_and_update_header()")
@@ -50,49 +71,41 @@ def plate_solve_and_update_header(fits_path, log_message):
         except FileNotFoundError as e:
             raise FileNotFoundError("Plate solver executable not found") from e
 
-        # Check if ASTAP failed
         if result.returncode != 0:
             print(f"❌ ASTAP solver failed with exit code {result.returncode}")
             print(f"❌ ASTAP stderr: {result.stderr.strip()}")
-            return  # Exit early if solver failed
+            return
 
         print(f"[INFO] ASTAP stdout: {result.stdout.strip()}")
 
-
-        with fits.open(fits_path) as hdul:
-            hdr = hdul[0].header
-            crval1 = hdr.get('CRVAL1')
-            crval2 = hdr.get('CRVAL2')
-            if not crval1 or not crval2:
-                print("No WCS headers found after solve.")
-                wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
-                if os.path.exists(wcs_file):
-                    print(f"🗂️ Trying to read WCS from {wcs_file}")
-                    try:
-                        with open(wcs_file, 'r') as f:
-                            for line in f:
-                                if 'RA center' in line:
-                                    crval1 = float(line.split(':')[1].strip())
-                                if 'DEC center' in line:
-                                    crval2 = float(line.split(':')[1].strip())
-                        if crval1 and crval2:
-                            print(f"🧭 Sidecar WCS center: RA={crval1:.4f}°, Dec={crval2:.4f}°")
-                        else:
-                            print("⚠️ Sidecar WCS file missing RA/DEC information.")
-                            return
-                    except Exception as e:
-                        print(f"⚠️ Failed to parse sidecar WCS file: {e}")
-                        return
-                else:
-                    print("⚠️ No sidecar WCS file found.")
-                    return
-
-        # Use the newly added query_object_name() here
-        session_name = query_object_name(crval1, crval2, log_message)
-
-        print(f"📅 Session: Imaging Session: {session_name}")
-        # After successful solve and name lookup, cleanup WCS file
+        # Parse the WCS sidecar file
         wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
+        if not os.path.exists(wcs_file):
+            print("⚠️ No sidecar WCS file found.")
+            return
+
+        wcs_info = parse_wcs_sidecar(wcs_file)
+        if not wcs_info:
+            print("⚠️ Failed to parse WCS info.")
+            return
+
+        with fits.open(fits_path, mode='update') as hdul:
+            hdr = hdul[0].header
+            hdr['CRVAL1'] = wcs_info.get('CRVAL1', 0)
+            hdr['CRVAL2'] = wcs_info.get('CRVAL2', 0)
+            hdr['CTYPE1'] = 'RA---TAN'
+            hdr['CTYPE2'] = 'DEC--TAN'
+            hdr['EQUINOX'] = 2000.0
+            hdr['RADECSYS'] = 'ICRS'
+            hdr['CDELT1'] = wcs_info.get('CDELT1', -0.000277778)
+            hdr['CDELT2'] = wcs_info.get('CDELT2', 0.000277778)
+            hdr['CROTA2'] = wcs_info.get('CROTA2', 0.0)
+            print(f"✅ FITS header updated with WCS information.")
+
+        # Query object name
+        session_name = query_object_name(wcs_info['CRVAL1'], wcs_info['CRVAL2'], log_message)
+        print(f"📅 Session: Imaging Session: {session_name}")
+
         cleanup_wcs_file(wcs_file)
         return session_name
 
