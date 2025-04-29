@@ -1,70 +1,64 @@
 # Astrocalibrator
 
-**Astrocalibrator** is a Python-based GUI tool for astronomers designed primarily for the archival of FITS data for later scientific processing. It streamlines image calibration while providing organized, compressed outputs for long-term storage. Designed with simplicity and automation in mind, it supports full calibration workflows with optional plate solving and archive packaging.
+![Astrocalibrator Screenshot](astrocalibrator_screenshot.png)
 
-## 🚀 Features
-- Graphical interface using Tkinter
-- Batch support for Light, Dark, Flat, and Dark Flat frames
-- Automatic calibration with multiprocessing
-- Optional plate solving using ASTAP
-- Saves final output as a ZIP archive with session naming
-- Option to save master calibration frames
-- Progress bar with visual feedback and log console
-- Session naming based on plate-solved object
+Astrocalibrator is a lightweight and user-friendly calibration tool designed for astrophotography workflows. It provides an easy way to calibrate light frames using dark, flat, dark flat, and bias frames — or master calibration files.
+It is especially useful for archiving calibrated data for later processes in multi session imaging!
 
-## 📦 Output Structure
-- Output ZIP contains calibrated light frames and optionally master calibration frames
-- Temporary files are cleaned after zipping
-- Logs are shown live in the application
-- Calibrated images saved in a temporary folder and then archived
-- Final ZIP placed in the parent directory of the light frames folder
-- File name format: `[ObjectName]_[Date].zip`
+## Features
 
-## 🛠 Installation
+- 📂 Load and manage Light, Dark, Flat, Dark Flat, and Bias images
+- 📦 Support for using existing Master Dark, Flat, and Bias calibration files
+- 📦 Create new Master Dark, Flat, and Bias calibration files
+- 🚀 Automatic **plate solving** of light frames using ASTAP
+- 🌌 Auto-update and preserve FITS headers after solving
+- 🔄 Full calibration pipeline: bias/dark subtraction, flat correction
+- 📋 Log window with pop-out/dock support
+- 🛠 Settings menu for ASTAP location configuration
+- 🧹 Reset button to clear all selections quickly
+- 🖼️ Simple About window with drag support
+- 🪐 Easy manual calibration start with "Calibrate Lights" button
+- 💾 Output calibrated frames to a chosen directory
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Kelsidavis/astrocalibrator.git
-   cd astrocalibrator
-   ```
+## Requirements
 
-2. **Install required Python packages**:
-   ```bash
-   pip install astropy
-   ```
-   Note: `tkinter` is typically included with Python installations. If not, refer to your OS-specific installation method.
+- Python 3.9+
+- Modules: `tkinter`, `astropy`, `Pillow`, `astroquery`
+- ASTAP installed (for plate solving)
 
-3. **Install ASTAP**:
-   - Download and install ASTAP from [https://www.hnsky.org/astap.htm](https://www.hnsky.org/astap.htm).
-   - Ensure that the ASTAP executable is added to your system's PATH.
+## Installation
 
-4. **Run the application**:
-   - Double-click the `start.bat` file provided in the repo.
-   - Or launch manually with:
-     ```bash
-     python main.py
-     ```
+1. Install required Python modules:
 
+```bash
+pip install pillow astropy astroquery
+```
 
-- Python 3.x
-- `astropy`, `tkinter`, `astap` (installed separately)
-- Windows (full support), others may require adaptation
+2. Install ASTAP:
 
-## 🧰 Usage
-1. Launch `main.py`
-2. Select FITS files for Light, Dark, Flat, and Dark Flats
-3. Click **"Solve & Calibrate"**
-4. Optionally check **"Save Calibration Masters"** to keep master frames
-5. Output will be zipped and placed in the appropriate folder
+- Download ASTAP from: https://www.hnsky.org/astap.htm
+- Set the ASTAP executable location inside Astrocalibrator settings.
 
-## 🤝 Contributing
-Contributions, feature requests, and issue reports are welcome! Feel free to fork the repo and submit a pull request.
+## How to Run
 
-## 🧠 Notes
-- ASTAP must be installed. By default, the application attempts to locate it in Program Files; adding it to your system PATH is optional but recommended
-- Solving failures will be logged and skipped gracefully
-- Session title is inferred from the first successful solve result
+Clone or download the project, then:
 
-## 📜 License
-MIT License
+```bash
+python main.py
+```
+
+A standalone Windows installer (`.exe`) is also available under [Releases](https://github.com/yourproject/releases) if you prefer not to use Python.
+
+## License
+
+This project is open-source under the MIT License.
+
+## Author
+
+Created by Kelsi Davis
+Website: [geekastro.dev](https://geekastro.dev)
+
+---
+
+Enjoy effortless astrophotography calibration! 🌟
 
