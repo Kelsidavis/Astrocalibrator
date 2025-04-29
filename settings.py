@@ -1,7 +1,9 @@
 import os
 import json
 
-SETTINGS_FILE = os.path.join(os.path.expanduser('~'), '.astro_calibrator_settings.json')
+# Define full settings path inside AppData
+SETTINGS_FILE = os.path.join(os.getenv('APPDATA'), 'Astrocalibrator', 'settings.json')
+os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
 
 def load_settings():
     try:
