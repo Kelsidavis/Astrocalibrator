@@ -5,6 +5,9 @@ import zipfile
 import concurrent.futures
 from datetime import datetime
 import gc
+from wcs_utils import inject_wcs_from_sidecar
+import shutil
+
 
 def load_fits_data(path):
     if os.path.exists(path):
@@ -130,13 +133,24 @@ def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bi
 
     fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
 
+    # 🛰️ Copy .wcs sidecar if available
+    original_sidecar = os.path.splitext(light_path)[0] + '.wcs'
+    calibrated_sidecar = os.path.splitext(output_path)[0] + '.wcs'
+
+    if os.path.exists(original_sidecar):
+        shutil.copyfile(original_sidecar, calibrated_sidecar)
+        print(f"📄 Copied WCS sidecar: {os.path.basename(calibrated_sidecar)}")
+    else:
+        print(f"⚠️ No sidecar found for {os.path.basename(light_path)}")
+
+    # 🛰️ Inject WCS from copied sidecar into the calibrated FITS
+    from main import inject_wcs_from_sidecar
+    inject_wcs_from_sidecar(output_path)
+
     # 🧹 Free memory
     del calibrated_data
     del header
     gc.collect()
-
-    return output_path, full_log_message
-
 
 def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     if not image_list:
@@ -220,8 +234,12 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
         total = len(futures)
         for future in concurrent.futures.as_completed(futures):
             try:
-                output_path, full_log_message = future.result()
-                log_callback(full_log_message)
+                result = future.result()
+                if result is not None:
+                    output_path, full_log_message = result
+                    log_callback(full_log_message)
+                else:
+                    log_callback("⚠️ Calibration returned None for a frame.")
 
                 completed += 1
                 if completed % 5 == 0 or completed == total:

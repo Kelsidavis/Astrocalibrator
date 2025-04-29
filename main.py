@@ -14,7 +14,6 @@ from gui import root, log_message, log_textbox, output_folder_var, progress_var,
 from gui import session_title_var, master_dark_path, master_flat_path, master_bias_path
 from gui import master_dark_enabled, master_flat_enabled, master_bias_enabled
 from gui import ToolTip
-from calibration import run_parallel_calibration, load_fits_by_filter, create_master_frame, save_master_frame, calibrate_image
 from solving import plate_solve_and_update_header
 from settings import load_settings, save_settings, remember_file, get_remembered_file
 
@@ -32,6 +31,8 @@ from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
 import glob
+from calibration import run_parallel_calibration
+
 
 # Globals for buttons
 select_output_btn = None
@@ -128,6 +129,39 @@ def global_cleanup(output_folder):
             except Exception as e:
                 print(f"⚠️ Failed to delete {file_path}: {e}")
 
+def inject_wcs_from_sidecar(fits_path):
+    """Inject WCS fields into a FITS file from its .wcs sidecar."""
+    wcs_sidecar_path = os.path.splitext(fits_path)[0] + '.wcs'
+    if not os.path.exists(wcs_sidecar_path):
+        print(f"⚠️ No WCS sidecar found for {fits_path}")
+        return False
+
+    try:
+        with fits.open(fits_path, mode='update') as hdul_cal:
+            header = hdul_cal[0].header
+
+            with fits.open(wcs_sidecar_path) as hdul_wcs:
+                wcs_header = hdul_wcs[0].header
+
+                wcs_keys = ['CRVAL1', 'CRVAL2', 'CRPIX1', 'CRPIX2',
+                            'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2',
+                            'CTYPE1', 'CTYPE2']
+
+                for key in wcs_keys:
+                    if key in wcs_header:
+                        header[key] = wcs_header[key]
+
+                header['WCSINJ'] = (True, 'WCS injected from sidecar')
+
+            hdul_cal.flush()
+
+        print(f"✅ WCS injected into {os.path.basename(fits_path)}")
+        return True
+
+    except Exception as e:
+        print(f"💥 Failed to inject WCS into {fits_path}: {e}")
+        return False
+
 def generate_fallback_name(header=None):
     date_stamp = datetime.now().strftime("%Y-%m-%d")
 
@@ -158,10 +192,6 @@ def maintain_object_info():
 
 # --- Global collected session names ---
 session_names_collected = []
-
-# --- Globals for plate solving status ---
-solved_frames_wcs = {}  # Successfully solved frames and their WCS info
-unsolved_frames = []    # Frames that failed solving
 
 # --- Cache solved object info ---
 cached_object_description = None
@@ -513,32 +543,6 @@ def run_plate_solving():
         if worker_threads_alive:
             root.after(500, check_solving_results, result_queue)
         else:
-                        # --- Estimate WCS for Unsolved Frames ---
-            if unsolved_frames and solved_frames_wcs:
-                reference_path, reference_wcs = next(iter(solved_frames_wcs.items()))
-                log_message(f"🛠 Estimating WCS for {len(unsolved_frames)} unsolved frames using reference: {os.path.basename(reference_path)}")
-
-                for failed_path in unsolved_frames:
-                    try:
-                        with fits.open(failed_path, mode='update') as hdul:
-                            hdr = hdul[0].header
-                            hdr['CRVAL1'] = reference_wcs['ra']
-                            hdr['CRVAL2'] = reference_wcs['dec']
-                            hdr['CRPIX1'] = reference_wcs['width'] / 2
-                            hdr['CRPIX2'] = reference_wcs['height'] / 2
-                            hdr['CD1_1'] = -reference_wcs['scale'] / 3600
-                            hdr['CD1_2'] = 0.0
-                            hdr['CD2_1'] = 0.0
-                            hdr['CD2_2'] = reference_wcs['scale'] / 3600
-                            hdr['CTYPE1'] = 'RA---TAN'
-                            hdr['CTYPE2'] = 'DEC--TAN'
-                            hdr['CUNIT1'] = 'deg'
-                            hdr['CUNIT2'] = 'deg'
-                            hdr['WCS_EST'] = (True, "Estimated WCS based on nearby solved frame")
-                            hdul.flush()
-                        log_message(f"✅ Estimated WCS injected into: {os.path.basename(failed_path)}")
-                    except Exception as e:
-                        log_message(f"⚠️ Failed to inject WCS into {failed_path}: {e}")
             # When ALL solving finished:
             if calibrate_btn:
                 calibrate_btn.config(state='normal')
