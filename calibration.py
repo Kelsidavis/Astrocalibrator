@@ -8,6 +8,17 @@ import gc
 from wcs_utils import inject_wcs_from_sidecar
 import shutil
 
+def inject_minimal_sip(header):
+    """Inject minimal fake SIP headers for compatibility with picky software like Tycho."""
+    try:
+        header['A_ORDER'] = 0
+        header['B_ORDER'] = 0
+        header['AP_ORDER'] = 0
+        header['BP_ORDER'] = 0
+        print("✅ Minimal SIP keywords injected for compatibility.")
+    except Exception as e:
+        print(f"⚠️ Failed to inject minimal SIP keywords: {e}")
+
 
 def load_fits_data(path):
     if os.path.exists(path):
@@ -145,7 +156,17 @@ def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bi
 
     # 🛰️ Inject WCS from copied sidecar into the calibrated FITS
     from main import inject_wcs_from_sidecar
-    inject_wcs_from_sidecar(output_path)
+    success = inject_wcs_from_sidecar(output_path)
+
+    # ✨ If WCS injection succeeded, also inject minimal fake SIP
+    if success:
+        try:
+            with fits.open(output_path, mode='update') as hdul:
+                header = hdul[0].header
+                inject_minimal_sip(header)
+                hdul.flush()
+        except Exception as e:
+            print(f"⚠️ Failed to reopen calibrated FITS for SIP injection: {e}")
 
     # 🧹 Free memory
     del calibrated_data
