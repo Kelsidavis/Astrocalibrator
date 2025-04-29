@@ -89,27 +89,51 @@ def plate_solve_and_update_header(fits_path, log_message):
             print("⚠️ Failed to parse WCS info.")
             return
 
+        imaging_date = None  # <-- NEW
+
         with fits.open(fits_path, mode='update') as hdul:
             hdr = hdul[0].header
-            hdr['CRVAL1'] = wcs_info.get('CRVAL1', 0)
-            hdr['CRVAL2'] = wcs_info.get('CRVAL2', 0)
+            naxis1 = hdr.get('NAXIS1', 2048)
+            naxis2 = hdr.get('NAXIS2', 2048)
+
+            hdr['CRVAL1'] = wcs_info.get('CRVAL1', 0.0)
+            hdr['CRVAL2'] = wcs_info.get('CRVAL2', 0.0)
             hdr['CTYPE1'] = 'RA---TAN'
             hdr['CTYPE2'] = 'DEC--TAN'
+            hdr['CUNIT1'] = 'deg'
+            hdr['CUNIT2'] = 'deg'
             hdr['EQUINOX'] = 2000.0
             hdr['RADECSYS'] = 'ICRS'
-            hdr['CDELT1'] = wcs_info.get('CDELT1', -0.000277778)
-            hdr['CDELT2'] = wcs_info.get('CDELT2', 0.000277778)
-            hdr['CROTA2'] = wcs_info.get('CROTA2', 0.0)
-            print(f"✅ FITS header updated with WCS information.")
+            hdr['CRPIX1'] = naxis1 / 2
+            hdr['CRPIX2'] = naxis2 / 2
+            hdr['CD1_1'] = -abs(wcs_info.get('CDELT1', -0.000277778))
+            hdr['CD1_2'] = 0.0
+            hdr['CD2_1'] = 0.0
+            hdr['CD2_2'] = abs(wcs_info.get('CDELT2', 0.000277778))
+
+            if 'CROTA2' in wcs_info:
+                hdr['CROTA2'] = wcs_info['CROTA2']
+
+            # --- Capture the DATE-OBS from header ---
+            imaging_date = hdr.get('DATE-OBS', None)
+            if imaging_date:
+                print(f"📅 Captured imaging date: {imaging_date}")
+            else:
+                print("⚠️ DATE-OBS missing in FITS header.")
+
+            print(f"✅ FITS header updated with full WCS fields for Tycho compatibility.")
 
         # Query object name
         session_name = query_object_name(wcs_info['CRVAL1'], wcs_info['CRVAL2'], log_message)
         print(f"📅 Session: Imaging Session: {session_name}")
 
         cleanup_wcs_file(wcs_file)
-        return session_name
+
+        # 🛠 Return BOTH session name and imaging date
+        return session_name, imaging_date
 
     except Exception as e:
         import traceback
         print(f"💥 Fatal crash in plate_solve_and_update_header: {e} {traceback.format_exc()}")
         raise
+

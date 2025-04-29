@@ -154,7 +154,7 @@ def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
 
     return None
 
-def run_parallel_calibration(light_images, dark_images, flat_images, bias_images, output_folder, session_title="UnknownObject", log_callback=None):
+def run_parallel_calibration(light_images, dark_images, flat_images, bias_images, output_folder, session_title="UnknownObject", log_callback=None, save_masters=False):
     if log_callback is None:
         log_callback = print
 
@@ -229,18 +229,23 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
             except Exception as e:
                 log_callback(f"💥 Error in calibration: {e}")
 
-    log_callback("📦 Creating ZIP archive of calibrated frames...")
+    # 🧹 ZIP master calibration frames if Save Masters is enabled
+    if save_masters:
+        log_callback("📦 Creating ZIP archive of master calibration frames...")
 
-    session_date = datetime.now().strftime("%Y%m%d")
-    object_safe = session_title.replace(' ', '_').replace(':', '_') or 'UnknownObject'
-    zip_name = f"{object_safe}_{session_date}.zip"
-    zip_path = os.path.join(output_folder, zip_name)
+        session_date = datetime.now().strftime("%Y-%m-%d")
+        object_safe = session_title.replace(' ', '_').replace(':', '_').replace('/', '_') or 'UnknownObject'
+        zip_name = f"{object_safe}_{session_date}_masters.zip"
+        zip_path = os.path.join(output_folder, zip_name)
 
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for file_name in os.listdir(calibrated_folder):
-            full_path = os.path.join(calibrated_folder, file_name)
-            zipf.write(full_path, arcname=file_name)
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file_name in os.listdir(output_folder):
+                if file_name.endswith("_master.fits"):
+                    full_path = os.path.join(output_folder, file_name)
+                    zipf.write(full_path, arcname=file_name)
 
-    log_callback(f"📦 Calibrated frames zipped successfully: {zip_name}")
+        log_callback(f"📦 Master calibration frames zipped successfully: {zip_name}")
+    else:
+        log_callback("ℹ️ Save Masters not enabled. Skipping master frames ZIP creation.")
 
     return master_dark, master_flat, master_bias

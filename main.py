@@ -245,7 +245,6 @@ def _calibration_worker():
     start_time = time.time()
     progress_label_var.set("Calibrating frames...")
 
-    # Restore object info if cached
     if cached_object_description:
         object_description_var.set(cached_object_description)
     if cached_object_distance:
@@ -253,7 +252,9 @@ def _calibration_worker():
 
     progress_bar.config(mode="indeterminate")
     progress_bar.start(10)
+
     method = 'median'
+    output_folder = output_folder_var.get()
 
     first_light_path = next(iter(light_files), None)
     if not first_light_path:
@@ -262,8 +263,9 @@ def _calibration_worker():
             calibrate_btn.config(state='normal')
         return
 
-    output_folder = output_folder_var.get()
     temp_folder = os.path.join(output_folder, "temp")
+    solve_temp_folder = os.path.join(output_folder, "solve_temp")
+
     os.makedirs(temp_folder, exist_ok=True)
 
     run_parallel_calibration(
@@ -273,68 +275,86 @@ def _calibration_worker():
         bias_images=bias_files,
         output_folder=output_folder,
         session_title=session_title_var.get(),
-        log_callback=log_message
+        log_callback=log_message,
+        save_masters=save_masters_var.get()
     )
 
-    progress_label_var.set("Complete!")
+
     elapsed = time.time() - start_time
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
 
-    if not save_masters_var.get():
-        try:
+    # 🧹 Cleanup
+    try:
+        if os.path.exists(temp_folder):
             shutil.rmtree(temp_folder)
-            log_message("🧹 Temporary calibration files cleaned up.")
-        except Exception as e:
-            log_message(f"⚠️ Failed to clean temp folder: {e}")
-    else:
-        log_message("💾 Temporary calibration files retained (Save Masters enabled).")
+            log_message("🧹 Temp folder cleaned up.")
+        if os.path.exists(solve_temp_folder):
+            shutil.rmtree(solve_temp_folder)
+            log_message("🧹 Solve temp folder cleaned up.")
+    except Exception as e:
+        log_message(f"⚠️ Cleanup warning: {e}")
 
+    # 🧹 Delete leftover sidecar files
+    try:
+        for pattern in ["*.wcs", "*.ini", "*.bak"]:
+            for leftover in glob.glob(os.path.join(output_folder, pattern)):
+                os.remove(leftover)
+                print(f"🧹 Deleted leftover file: {leftover}")
+        log_message("🧹 Deleted stray .wcs, .ini, and .bak files.")
+    except Exception as e:
+        log_message(f"⚠️ Failed during post-calibration cleanup: {e}")
+
+# 💾 Create ZIP archive of calibrated light frames and delete calibrated folder
+    try:
+        session_name_cleaned = session_title_var.get().replace(' ', '_').replace(':', '').replace('/', '_')
+        imaging_date = datetime.now().strftime("%Y-%m-%d")
+
+        if first_light_path:
+            with fits.open(first_light_path) as hdul:
+                header = hdul[0].header
+                date_obs = header.get('DATE-OBS') or header.get('DATE') or header.get('DATEOBS')
+                if date_obs:
+                    imaging_date = date_obs.split('T')[0]
+
+        calibrated_folder = os.path.join(output_folder, "calibrated")
+
+        zip_filename = os.path.join(output_folder, f"{session_name_cleaned}_{imaging_date}_calibrated.zip")
+
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root_dir, _, files in os.walk(calibrated_folder):
+                for file in files:
+                    if file.endswith('.fits'):
+                        file_path = os.path.join(root_dir, file)
+                        arcname = os.path.relpath(file_path, calibrated_folder)
+                        zipf.write(file_path, arcname)
+
+        log_message(f"📦 Created ZIP archive: {zip_filename}")
+
+        # 🧹 Remove calibrated folder after zipping
+        if os.path.exists(calibrated_folder):
+            shutil.rmtree(calibrated_folder)
+            log_message("🧹 Deleted calibrated folder after creating ZIP.")
+
+    except Exception as e:
+        log_message(f"⚠️ Failed to create calibrated ZIP or delete calibrated folder: {e}")
+
+        log_message(f"📦 Created ZIP archive: {zip_filename}")
+    except Exception as e:
+        log_message(f"⚠️ Failed to create ZIP archive: {e}")
+
+    # ✅ Restore GUI
     progress_bar.stop()
     progress_bar.config(mode="determinate")
     progress_var.set(100)
-
     calibrate_btn.config(state='normal')
     progress_label_var.set("Idle")
     fade_out_progress_label()
 
-    # Restore cached object info
     if cached_object_description:
         object_description_var.set(cached_object_description)
     if cached_object_distance:
         object_distance_var.set(cached_object_distance)
 
-    # --- New: Create output ZIP archive with session name and imaging date ---
-    try:
-        final_output_folder = output_folder_var.get()
-        session_name_cleaned = session_title_var.get().replace(' ', '_').replace(':', '').replace('/', '_')
-
-        # 🗓 Extract DATE-OBS from the first light frame
-        first_light = next(iter(light_files), None)
-        if first_light:
-            with fits.open(first_light) as hdul:
-                header = hdul[0].header
-                date_obs = header.get('DATE-OBS') or header.get('DATE') or header.get('DATEOBS')
-                if date_obs:
-                    imaging_date = date_obs.split('T')[0]  # Only YYYY-MM-DD
-                else:
-                    imaging_date = datetime.now().strftime("%Y-%m-%d")
-        else:
-            imaging_date = datetime.now().strftime("%Y-%m-%d")
-
-        zip_filename = os.path.join(final_output_folder, f"{session_name_cleaned}_{imaging_date}_calibrated.zip")
-
-        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root_dir, _, files in os.walk(final_output_folder):
-                for file in files:
-                    if file.endswith('.fits'):
-                        file_path = os.path.join(root_dir, file)
-                        arcname = os.path.relpath(file_path, final_output_folder)
-                        zipf.write(file_path, arcname)
-
-        log_message(f"📦 Created ZIP archive: {zip_filename}")
-
-    except Exception as e:
-        log_message(f"⚠️ Failed to create ZIP archive: {e}")
 
 def run_calibration_pipeline():
 
@@ -571,14 +591,18 @@ def run_plate_solving():
                 session_title_var.set(fallback_name)
                 log_message(f"📅 Fallback Imaging Session set to: {fallback_name}")
 
-            try:
-                # Clean up solved and unsolved tracking after solving
-                solved_frames_wcs.clear()
-                unsolved_frames.clear()
-                shutil.rmtree(solve_temp_folder)
-                log_message("🧹 Temporary solve files cleaned up.")
-            except Exception as e:
-                log_message(f"⚠️ Failed to clean solve temp folder: {e}")
+                try:
+                    # Clean up solved and unsolved tracking after solving
+                    solved_frames_wcs.clear()
+                    unsolved_frames.clear()
+                    
+                    if os.path.exists(solve_temp_folder):
+                        shutil.rmtree(solve_temp_folder)
+                        log_message("🧹 Temporary solve files cleaned up.")
+                    else:
+                        log_message("ℹ️ Solve temp folder already cleaned.")
+                except Exception as e:
+                    log_message(f"⚠️ Failed to clean solve temp folder: {e}")
 
     root.after(500, check_solving_results, result_queue)
 
