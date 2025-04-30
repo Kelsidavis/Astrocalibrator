@@ -3,11 +3,12 @@ import subprocess
 import shutil
 import concurrent.futures
 from astropy.io import fits
-from astropy.coordinates import SkyCoord
 from astroquery.simbad import Simbad
 from astropy import units as u
 from calibration import load_fits_by_filter
-from messier_catalog import MESSIER_CATALOG
+from object_info import object_info
+from astropy.coordinates import SkyCoord, Angle
+
 
 def cleanup_wcs_file(wcs_path):
     try:
@@ -17,6 +18,7 @@ def cleanup_wcs_file(wcs_path):
     except Exception as e:
         print(f"⚠️ Failed to delete WCS file: {e}")
 
+
 def query_object_name(ra_deg, dec_deg, log_message):
     print(f"DEBUG RAW: ra={ra_deg} ({type(ra_deg)}), dec={dec_deg} ({type(dec_deg)})")
     try:
@@ -25,15 +27,32 @@ def query_object_name(ra_deg, dec_deg, log_message):
         print(f"🔍 Validating declination before SkyCoord: {dec}")
         if not (-90.0 <= dec <= 90.0):
             raise ValueError(f"Invalid declination: {dec}")
-
-        log_message(f"🔬 Attempting SkyCoord with RA={ra}, Dec={dec}")
-        coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
     except Exception as e:
+        import traceback
+        print("💥 Coordinate validation failed:\n" + traceback.format_exc())
         log_message(f"⚠️ WCS matching failed: {e}")
         return "Unknown Object"
 
     try:
-        result = Simbad.query_region(coord, radius='2m')  # 2 arcminutes search radius
+        skycoord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
+
+        closest_name = None
+        closest_distance = None
+        for name, (_, _, obj_ra, obj_dec) in object_info.items():
+            obj_coord = SkyCoord(ra=obj_ra * u.deg, dec=obj_dec * u.deg, frame='icrs')
+            sep = skycoord.separation(obj_coord)
+            print(f"📏 Checking against {name}: sep = {sep.to_string('arcmin')}")
+            if sep < Angle(10, unit=u.arcminute):
+                if closest_distance is None or sep < closest_distance:
+                    closest_name = name
+                    closest_distance = sep
+
+        if closest_name:
+            print(f"🔭 Matched local object: {closest_name} at {closest_distance.to_string('arcmin')}")
+            log_message(f"🔭 Matched local object: {closest_name} ({closest_distance.to_string('arcmin')})")
+            return closest_name
+
+        result = Simbad.query_region(skycoord, radius='2m')
         if result is not None and len(result) > 0:
             main_id = result[0]['MAIN_ID']
             if isinstance(main_id, bytes):
@@ -41,6 +60,7 @@ def query_object_name(ra_deg, dec_deg, log_message):
             return main_id
         else:
             return "Unknown Object"
+
     except Exception as e:
         log_message(f"⚠️ Simbad query failed: {e}")
         return "Unknown Object"
@@ -73,6 +93,7 @@ def parse_wcs_sidecar(wcs_path):
     except Exception as e:
         print(f"⚠️ Failed to read FITS .wcs sidecar: {e}")
         return {}
+
 
 def plate_solve_and_update_header(fits_path, log_message):
     try:
@@ -121,13 +142,15 @@ def plate_solve_and_update_header(fits_path, log_message):
             cleanup_wcs_file(wcs_file)
             return "UnknownObject"
 
+        print(f"🔬 Attempting SkyCoord with RA={ra}, Dec={dec}")
+        print(f"DEBUG RAW: ra={ra} ({type(ra)}), dec={dec} ({type(dec)})")
+        print(f"🔍 Validating declination before SkyCoord: {dec}")
+
         if not (-90.0 <= dec <= 90.0):
             print(f"⚠️ Invalid declination from WCS: {dec}")
             log_message(f"⚠️ Skipping WCS injection due to invalid declination: {dec}")
             cleanup_wcs_file(wcs_file)
             return "UnknownObject"
-
-        log_message(f"🔬 Attempting SkyCoord with RA={ra}, Dec={dec}")
 
         imaging_date = None
 

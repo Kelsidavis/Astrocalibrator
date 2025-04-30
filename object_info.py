@@ -123,7 +123,7 @@ object_info = {
     "NGC 1365": ("Great Barred Spiral Galaxy", "56 Million ly", 53.401, -36.140),
     "NGC 1399": ("Elliptical Galaxy", "66 Million ly", 54.114, -35.450),
     "NGC 1566": ("Spanish Dancer Galaxy", "40 Million ly", 65.001, -54.938),
-    "NGC 2024": (" Flame Nebula", "1,350 ly", 85.400, -1933),
+    "NGC 2024": (" Flame Nebula", "1,350 ly", 85.400, -1.933),
     "NGC 2244": ("Rosette Nebula Cluster", "5,200 ly", 97.5, 4.95),
     "NGC 2392": ("Eskimo Nebula", "2,870 ly", 112.467, 20.917),
     "NGC 2683": ("UFO Galaxy", "30 million ly", 133.171, 33.421),
