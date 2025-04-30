@@ -213,7 +213,7 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
             tasks['dark_flat'] = executor.submit(build_and_save_master, dark_flat_images, output_folder, "master_dark_flat")
         if flat_images:
             tasks['flat'] = executor.submit(build_and_save_master, flat_images, output_folder, "master_flat",
-                                            dark_flat_path=os.path.join(output_folder, "master_dark_flat_master.fits") if dark_flat_images else None)
+            dark_flat_path=os.path.join(output_folder, "master_dark_flat.fits") if dark_flat_images else None)
 
         for name, task in tasks.items():
             result = task.result()
@@ -229,9 +229,9 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
             elif name == 'dark_flat':
                 master_dark_flat = result
 
-    master_dark_path = os.path.join(output_folder, "master_dark_master.fits") if master_dark is not None else None
-    master_flat_path = os.path.join(output_folder, "master_flat_master.fits") if master_flat is not None else None
-    master_bias_path = os.path.join(output_folder, "master_bias_master.fits") if master_bias is not None else None
+    master_dark_path = os.path.join(output_folder, "master_dark.fits") if master_dark is not None else None
+    master_flat_path = os.path.join(output_folder, "master_flat.fits") if master_flat is not None else None
+    master_bias_path = os.path.join(output_folder, "master_bias.fits") if master_bias is not None else None
 
     calibrated_folder = os.path.join(output_folder, "calibrated")
     os.makedirs(calibrated_folder, exist_ok=True)

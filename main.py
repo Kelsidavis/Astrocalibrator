@@ -46,6 +46,14 @@ unsolved_frames = set()
 # Prevent duplicate GUI element creation
 main_widgets_initialized = False
 
+# Constants for master calibration files
+MASTER_FILES = [
+    "master_dark.fits",
+    "master_flat.fits",
+    "master_bias.fits",
+    "master_dark_flat.fits"
+]
+
 # Configure a custom Progressbar style to make it visible
 style = ttk.Style()
 style.theme_use('default')
@@ -393,17 +401,16 @@ def _calibration_worker():
     except Exception as e:
         log_message(f"⚠️ Failed to create ZIP archive: {e}")
 
-        # 🧹 Remove leftover master calibration files if not saving masters
+    # 🧹 Remove leftover master calibration files if not saving masters
     try:
         if not save_masters_var.get():
-            for master_name in ["master_dark_master.fits", "master_flat_master.fits", "master_bias_master.fits", "master_dark_flat_master.fits"]:
+            for master_name in MASTER_FILES:
                 master_path = os.path.join(output_folder, master_name)
                 if os.path.exists(master_path):
                     os.remove(master_path)
                     log_message(f"🧹 Deleted leftover {master_name}.")
     except Exception as e:
         log_message(f"⚠️ Failed to delete leftover master files: {e}")
-
 
     # ✅ Restore GUI
     progress_bar.stop()
