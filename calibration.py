@@ -9,16 +9,20 @@ from wcs_utils import inject_wcs_from_sidecar
 import shutil
 
 def inject_minimal_sip(header):
-    """Inject minimal fake SIP headers for compatibility with picky software like Tycho."""
+    """Inject minimal fake SIP headers and fix CTYPE for compatibility with Tycho and astropy."""
     try:
         header['A_ORDER'] = 0
         header['B_ORDER'] = 0
         header['AP_ORDER'] = 0
         header['BP_ORDER'] = 0
-        print("✅ Minimal SIP keywords injected for compatibility.")
-    except Exception as e:
-        print(f"⚠️ Failed to inject minimal SIP keywords: {e}")
 
+        for ctype_key in ['CTYPE1', 'CTYPE2']:
+            if ctype_key in header and '-SIP' not in header[ctype_key]:
+                header[ctype_key] = header[ctype_key].strip() + '-SIP'
+
+        print("✅ Minimal SIP keywords and CTYPE updated for compatibility.")
+    except Exception as e:
+        print(f"⚠️ Failed to inject SIP headers: {e}")
 
 def load_fits_data(path):
     if os.path.exists(path):
