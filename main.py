@@ -68,6 +68,15 @@ style.configure(
 
 main_widgets_initialized = False
 
+def has_enough_space(folder, required_bytes=500_000_000):
+    """Check if the specified folder has enough free disk space."""
+    try:
+        total, used, free = shutil.disk_usage(folder)
+        return free > required_bytes
+    except Exception as e:
+        log_message(f"⚠️ Could not check disk space: {e}")
+        return False
+
 def initialize_main_widgets():
     global main_widgets_initialized
     if main_widgets_initialized:
@@ -303,6 +312,16 @@ def _calibration_worker():
     import time
     start_time = time.time()
     progress_label_var.set("Calibrating frames...")
+
+    output_folder = output_folder_var.get()
+    if not has_enough_space(output_folder, 500_000_000):  # Require 500MB minimum
+    log_message("❌ Not enough disk space. Please free at least 500MB before running calibration.")
+    progress_label_var.set("Insufficient disk space")
+    progress_bar.stop()
+    progress_bar.config(mode="determinate")
+    progress_var.set(0)
+    calibrate_btn.config(state='normal')
+    return
 
     if cached_object_description:
         object_description_var.set(cached_object_description)
