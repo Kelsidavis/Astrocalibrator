@@ -40,6 +40,9 @@ calibrate_btn = None
 current_output_label = None
 save_masters_var = None
 
+solved_frames_wcs = set()
+unsolved_frames = set()
+
 # Prevent duplicate GUI element creation
 main_widgets_initialized = False
 
@@ -224,51 +227,69 @@ def select_output_directory():
         master_bias_btn.config(state='normal')
 
 def find_nearest_known_object(fits_path, catalog):
+    def safe_float(val):
         try:
-            ra, dec = None, None
+            return float(str(val).strip().split()[0])
+        except Exception:
+            return None
 
-            # Try reading WCS headers first
-            with fits.open(fits_path) as hdul:
-                hdr = hdul[0].header
-                if 'CRVAL1' in hdr and 'CRVAL2' in hdr:
-                    ra = hdr['CRVAL1']
-                    dec = hdr['CRVAL2']
-                    log_message(f"🧭 FITS WCS center: RA={ra:.4f}°, Dec={dec:.4f}°")
+    try:
+        # Try reading WCS headers first
+        with fits.open(fits_path) as hdul:
+            hdr = hdul[0].header
+            ra = safe_float(hdr.get('CRVAL1'))
+            dec = safe_float(hdr.get('CRVAL2'))
 
-            # If WCS headers are missing, try reading the .wcs sidecar file
-            if ra is None or dec is None:
-                wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
-                if os.path.exists(wcs_file):
-                    try:
-                        with fits.open(wcs_file) as hdul:
-                            hdr = hdul[0].header
-                            ra = hdr.get('CRVAL1')
-                            dec = hdr.get('CRVAL2')
-                        if ra is not None and dec is not None:
-                            log_message(f"🧭 Sidecar WCS center (from FITS): RA={ra:.4f}°, Dec={dec:.4f}°")
-                    except Exception as e:
-                        log_message(f"⚠️ Failed to read sidecar WCS: {e}")
+        if ra is not None and dec is not None:
+            if -90.0 <= dec <= 90.0:
+                log_message(f"🧭 FITS WCS center: RA={ra:.4f}°, Dec={dec:.4f}°")
+            else:
+                log_message(f"⚠️ Invalid FITS WCS: Dec={dec:.2f}°. Trying sidecar WCS...")
+                ra, dec = None, None  # Force fallback to sidecar
 
-            if ra is not None and dec is not None:
-                solved_coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
 
-                closest_object = None
-                min_distance = float('inf')
+        # If WCS headers are missing, try reading the .wcs sidecar file
+        wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
+        if (ra is None or dec is None) and os.path.exists(wcs_file):
+            try:
+                with fits.open(wcs_file) as hdul:
+                    hdr = hdul[0].header
+                    ra = safe_float(hdr.get('CRVAL1'))
+                    dec = safe_float(hdr.get('CRVAL2'))
+                    if -90.0 <= dec <= 90.0:
+                        log_message(f"🧭 Sidecar WCS center: RA={ra:.4f}°, Dec={dec:.4f}°")
+                    else:
+                        log_message(f"⚠️ Skipping invalid sidecar WCS: Dec={dec:.2f}°")
+                        return None
+            except Exception as e:
+                log_message(f"⚠️ Failed to read sidecar WCS: {e}")
 
-                for name, (desc, dist, obj_ra, obj_dec) in catalog.items():
-                    obj_coord = SkyCoord(ra=obj_ra*u.deg, dec=obj_dec*u.deg, frame='icrs')
-                    sep = solved_coord.separation(obj_coord)
-                    if sep.degree < min_distance:
-                        min_distance = sep.degree
-                        closest_object = name
+        if ra is not None and dec is not None:
+            if not (-90.0 <= dec <= 90.0):
+                log_message(f"⚠️ Invalid declination value: {dec:.2f}°. Skipping object match.")
+                return None
+            log_message(f"🔬 Attempting SkyCoord with RA={ra}, Dec={dec}")
+            print(f"DEBUG RAW: ra={ra} ({type(ra)}), dec={dec} ({type(dec)})")
+            solved_coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
 
-                if closest_object and min_distance < 8:  # 8 degrees tolerance
-                    return closest_object
+            closest_object = None
+            min_distance = float('inf')
 
-        except Exception as e:
-            log_message(f"⚠️ WCS matching failed: {e}")
+            for name, (desc, dist, obj_ra, obj_dec) in catalog.items():
+                obj_coord = SkyCoord(ra=obj_ra*u.deg, dec=obj_dec*u.deg, frame='icrs')
+                sep = solved_coord.separation(obj_coord)
+                if sep.degree < min_distance:
+                    min_distance = sep.degree
+                    closest_object = name
 
-        return None    
+            if closest_object and min_distance < 8:
+                return closest_object
+
+    except Exception as e:
+        log_message(f"⚠️ WCS matching failed: {e}")
+
+    return None
+   
 
 def _calibration_worker():
     import time
@@ -427,21 +448,30 @@ def run_plate_solving():
 
     def solve_worker(path):
         nonlocal solver_failed
+        global cached_object_description, cached_object_distance
         try:
             log_message(f"🧪 Solving: {path}")
             try:
                 print(f"👣 Entering solve_worker() for path: {path}")
                 print(f"🛤️ Checking if file exists: {os.path.exists(path)}")
-                session_name_from_solver = plate_solve_and_update_header(path, log_message)
+                # 🔧 PATCHED: handle tuple return
+                result = plate_solve_and_update_header(path, log_message)
+                if isinstance(result, tuple):
+                    session_name_from_solver, _ = result
+                else:
+                    session_name_from_solver = result
                 session_name_nearby = find_nearest_known_object(path, object_info)
 
                 # Pick the best session name
                 if session_name_nearby:
                     session_name = session_name_nearby
                     log_message(f"🎯 Overriding solver object '{session_name_from_solver}' with nearby known object '{session_name}'")
-                else:
+                elif session_name_from_solver:
                     session_name = session_name_from_solver
                     log_message(f"📋 Keeping solver object: '{session_name}'")
+                else:
+                    session_name = "UnknownObject"
+                    log_message("⚠️ No valid object name found from solver or catalog.")
 
                 # Normalize it properly
                 if session_name:
@@ -459,15 +489,28 @@ def run_plate_solving():
                 if session_name:
                     session_title_var.set(session_name)
 
-                lookup_name = session_name.strip().title()
+                lookup_name = session_name.strip().upper().replace("NGC ", "NGC ").replace("IC ", "IC ").replace("MESSIER ", "Messier ")
 
                 info = object_info.get(lookup_name)
                 if info:
                     description, distance, _, _ = info
                 else:
-                    description = "No description available"
-                    distance = "Unknown distance"
-                    log_message(f"⚠️ Object '{lookup_name}' not found in database.")
+                    if session_name_nearby and session_name_nearby != session_name:
+                        log_message(f"🧭 Falling back to nearest known object: {session_name_nearby}")
+                        session_name = session_name_nearby
+                        session_title_var.set(session_name)
+                        lookup_name = session_name.strip().upper().replace("NGC ", "NGC ").replace("IC ", "IC ").replace("MESSIER ", "Messier ")
+                        info = object_info.get(lookup_name)
+                        if info:
+                            description, distance, _, _ = info
+                        else:
+                            description = "No description available"
+                            distance = "Unknown distance"
+                    else:
+                        description = "No description available"
+                        distance = "Unknown distance"
+                        log_message(f"⚠️ Object '{lookup_name}' not found in database.")
+
 
                 object_description_var.set(description)
                 object_distance_var.set(f"Distance: {distance}")
@@ -479,14 +522,13 @@ def run_plate_solving():
 
                 # 🛠 Debug FITS header right after solving
                 try:
-                    from astropy.io import fits  # local import inside thread
                     with fits.open(path) as hdul:
                         hdr = hdul[0].header
                         print("🔍 FITS Header keys:", list(hdr.keys()))
                         print("🔍 FITS OBJECT field:", hdr.get('OBJECT'))
                 except Exception as e:
                     print(f"⚠️ Could not read FITS header: {e}")
-    
+
             except FileNotFoundError as fnf_err:
                 if not solver_failed:
                     mb.showinfo("Plate Solver Not Found", "The plate solver executable could not be found. Calibration will continue without solving.")
@@ -499,9 +541,6 @@ def run_plate_solving():
         except Exception as outer_err:
             log_message(f"💥 Outer exception in solve_worker: {outer_err}")
 
-            
-    print(f"💬 Lights to solve: {light_files_to_solve}")
-    print(f"💬 Total light frames selected: {len(light_files_to_solve)}")
 
     for path in light_files_to_solve:
         threading.Thread(target=solve_worker, args=(path,), daemon=True).start()
@@ -562,7 +601,11 @@ def run_plate_solving():
             # Now choose session name for main window
             if session_names_collected:
                 from collections import Counter
-                most_common_name, _ = Counter(session_names_collected).most_common(1)[0]
+                if session_names_collected:
+                    most_common_name, _ = Counter(session_names_collected).most_common(1)[0]
+                else:
+                    most_common_name = "UnknownObject"
+                    log_message("⚠️ No session names collected. Using fallback.")
                 session_title_var.set(most_common_name)
                 # Lookup description and distance from local database
             # Lookup description and distance from local database

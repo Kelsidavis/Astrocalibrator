@@ -13,12 +13,24 @@ def cleanup_wcs_file(wcs_path):
     try:
         if os.path.exists(wcs_path):
             os.remove(wcs_path)
-            print(f"🧹 Deleted temporary WCS file: {wcs_path}")
+            print(f"☑ Deleted temporary WCS file: {wcs_path}")
     except Exception as e:
         print(f"⚠️ Failed to delete WCS file: {e}")
 
 def query_object_name(ra_deg, dec_deg, log_message):
-    coord = SkyCoord(ra=ra_deg*u.degree, dec=dec_deg*u.degree, frame='icrs')
+    print(f"DEBUG RAW: ra={ra_deg} ({type(ra_deg)}), dec={dec_deg} ({type(dec_deg)})")
+    try:
+        ra = float(ra_deg)
+        dec = float(dec_deg)
+        if not (-90.0 <= dec <= 90.0):
+            raise ValueError(f"Invalid declination: {dec}")
+
+        log_message(f"🔬 Attempting SkyCoord with RA={ra}, Dec={dec}")
+        coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+    except Exception as e:
+        log_message(f"⚠️ WCS matching failed: {e}")
+        return "Unknown Object"
+
     try:
         result = Simbad.query_region(coord, radius='2m')  # 2 arcminutes search radius
         if result is not None and len(result) > 0:
@@ -33,25 +45,33 @@ def query_object_name(ra_deg, dec_deg, log_message):
         return "Unknown Object"
 
 def parse_wcs_sidecar(wcs_path):
-    """Extract WCS information (CRVAL, CD matrix) from ASTAP .wcs file."""
-    wcs_data = {}
+    """Try reading ASTAP .wcs sidecar as FITS first, fallback to text."""
+    def safe_float(val):
+        try:
+            return float(str(val).strip())
+        except Exception:
+            return None
+
     try:
-        with open(wcs_path, 'r') as f:
-            for line in f:
-                if 'RA center' in line:
-                    wcs_data['CRVAL1'] = float(line.split(':')[1].strip())
-                elif 'DEC center' in line:
-                    wcs_data['CRVAL2'] = float(line.split(':')[1].strip())
-                elif 'Pixel scale' in line:
-                    pixel_scale_arcsec = float(line.split(':')[1].split()[0])
-                    wcs_data['CDELT1'] = -pixel_scale_arcsec / 3600.0  # Negative for image orientation
-                    wcs_data['CDELT2'] = pixel_scale_arcsec / 3600.0
-                elif 'Field rotation' in line:
-                    rotation = float(line.split(':')[1].strip())
-                    wcs_data['CROTA2'] = rotation
+        with fits.open(wcs_path) as hdul:
+            hdr = hdul[0].header
+            wcs_data = {
+                'CRVAL1': safe_float(hdr.get('CRVAL1')),
+                'CRVAL2': safe_float(hdr.get('CRVAL2')),
+                'CRPIX1': safe_float(hdr.get('CRPIX1')),
+                'CRPIX2': safe_float(hdr.get('CRPIX2')),
+                'CD1_1': safe_float(hdr.get('CD1_1')),
+                'CD1_2': safe_float(hdr.get('CD1_2')),
+                'CD2_1': safe_float(hdr.get('CD2_1')),
+                'CD2_2': safe_float(hdr.get('CD2_2')),
+                'CROTA2': safe_float(hdr.get('CROTA2')),
+                'CTYPE1': hdr.get('CTYPE1'),
+                'CTYPE2': hdr.get('CTYPE2'),
+            }
+            return wcs_data
     except Exception as e:
-        print(f"⚠️ Failed to parse .wcs file: {e}")
-    return wcs_data
+        print(f"⚠️ Failed to read FITS .wcs sidecar: {e}")
+        return {}
 
 def plate_solve_and_update_header(fits_path, log_message):
     try:
@@ -63,7 +83,7 @@ def plate_solve_and_update_header(fits_path, log_message):
         ]
 
         print(f"🗂️ Input FITS path received: {fits_path}")
-        print(f"🛤️ ASTAP executable path: {cmd[0]}")
+        print(f"🚤 ASTAP executable path: {cmd[0]}")
         print(f"🔧 Running ASTAP with command: {cmd}")
 
         try:
@@ -74,30 +94,49 @@ def plate_solve_and_update_header(fits_path, log_message):
         if result.returncode != 0:
             print(f"❌ ASTAP solver failed with exit code {result.returncode}")
             print(f"❌ ASTAP stderr: {result.stderr.strip()}")
-            return
+            return None
 
         print(f"[INFO] ASTAP stdout: {result.stdout.strip()}")
 
-        # Parse the WCS sidecar file
         wcs_file = os.path.splitext(fits_path)[0] + '.wcs'
         if not os.path.exists(wcs_file):
             print("⚠️ No sidecar WCS file found.")
-            return
+            return None
 
         wcs_info = parse_wcs_sidecar(wcs_file)
         if not wcs_info:
             print("⚠️ Failed to parse WCS info.")
-            return
+            return None
 
-        imaging_date = None  # <-- NEW
+        ra = wcs_info.get('CRVAL1')
+        dec = wcs_info.get('CRVAL2')
+
+        try:
+            ra = float(ra)
+            dec = float(dec)
+        except (TypeError, ValueError):
+            print(f"⚠️ Failed to convert RA/Dec to float: RA={ra}, Dec={dec}")
+            log_message(f"⚠️ Invalid WCS values. RA={ra}, Dec={dec}")
+            cleanup_wcs_file(wcs_file)
+            return "UnknownObject"
+
+        if not (-90.0 <= dec <= 90.0):
+            print(f"⚠️ Invalid declination from WCS: {dec}")
+            log_message(f"⚠️ Skipping WCS injection due to invalid declination: {dec}")
+            cleanup_wcs_file(wcs_file)
+            return "UnknownObject"
+
+        log_message(f"🔬 Attempting SkyCoord with RA={ra}, Dec={dec}")
+
+        imaging_date = None
 
         with fits.open(fits_path, mode='update') as hdul:
             hdr = hdul[0].header
             naxis1 = hdr.get('NAXIS1', 2048)
             naxis2 = hdr.get('NAXIS2', 2048)
 
-            hdr['CRVAL1'] = wcs_info.get('CRVAL1', 0.0)
-            hdr['CRVAL2'] = wcs_info.get('CRVAL2', 0.0)
+            hdr['CRVAL1'] = ra
+            hdr['CRVAL2'] = dec
             hdr['CTYPE1'] = 'RA---TAN'
             hdr['CTYPE2'] = 'DEC--TAN'
             hdr['CUNIT1'] = 'deg'
@@ -106,15 +145,14 @@ def plate_solve_and_update_header(fits_path, log_message):
             hdr['RADECSYS'] = 'ICRS'
             hdr['CRPIX1'] = naxis1 / 2
             hdr['CRPIX2'] = naxis2 / 2
-            hdr['CD1_1'] = -abs(wcs_info.get('CDELT1', -0.000277778))
-            hdr['CD1_2'] = 0.0
-            hdr['CD2_1'] = 0.0
-            hdr['CD2_2'] = abs(wcs_info.get('CDELT2', 0.000277778))
+            hdr['CD1_1'] = wcs_info.get('CD1_1', -0.000277778)
+            hdr['CD1_2'] = wcs_info.get('CD1_2', 0.0)
+            hdr['CD2_1'] = wcs_info.get('CD2_1', 0.0)
+            hdr['CD2_2'] = wcs_info.get('CD2_2', 0.000277778)
 
             if 'CROTA2' in wcs_info:
                 hdr['CROTA2'] = wcs_info['CROTA2']
 
-            # --- Capture the DATE-OBS from header ---
             imaging_date = hdr.get('DATE-OBS', None)
             if imaging_date:
                 print(f"📅 Captured imaging date: {imaging_date}")
@@ -123,17 +161,14 @@ def plate_solve_and_update_header(fits_path, log_message):
 
             print(f"✅ FITS header updated with full WCS fields for Tycho compatibility.")
 
-        # Query object name
-        session_name = query_object_name(wcs_info['CRVAL1'], wcs_info['CRVAL2'], log_message)
+        session_name = query_object_name(ra, dec, log_message)
         print(f"📅 Session: Imaging Session: {session_name}")
 
         cleanup_wcs_file(wcs_file)
 
-        # 🛠 Return BOTH session name and imaging date
-        return session_name, imaging_date
+        return session_name
 
     except Exception as e:
         import traceback
         print(f"💥 Fatal crash in plate_solve_and_update_header: {e} {traceback.format_exc()}")
         raise
-

@@ -3,8 +3,7 @@ from astropy.io import fits
 
 def inject_wcs_from_sidecar(fits_path):
     """
-    Attempts to inject WCS info into a calibrated FITS file
-    from an ASTAP-created sidecar file (same name, .wcs extension).
+    Injects WCS info from a plain-text ASTAP-generated .wcs file into the FITS header.
     """
     sidecar_path = os.path.splitext(fits_path)[0] + '.wcs'
 
@@ -12,21 +11,54 @@ def inject_wcs_from_sidecar(fits_path):
         print(f"ℹ️ No sidecar WCS file found for {os.path.basename(fits_path)}")
         return
 
+    wcs_info = {}
     try:
-        with fits.open(sidecar_path) as sidecar_hdul:
-            wcs_header = sidecar_hdul[0].header
+        with open(sidecar_path, 'r') as f:
+            for line in f:
+                if 'RA center' in line:
+                    wcs_info['CRVAL1'] = float(line.split(':')[1].strip())
+                elif 'DEC center' in line:
+                    wcs_info['CRVAL2'] = float(line.split(':')[1].strip())
+                elif 'Field rotation' in line:
+                    wcs_info['CROTA2'] = float(line.split(':')[1].strip())
+                elif 'Pixel scale' in line:
+                    pix_scale = float(line.split(':')[1].split()[0])
+                    wcs_info['CDELT1'] = -pix_scale / 3600.0
+                    wcs_info['CDELT2'] = pix_scale / 3600.0
+
+        ra = wcs_info.get('CRVAL1')
+        dec = wcs_info.get('CRVAL2')
+        if ra is None or dec is None:
+            print(f"⚠️ Missing RA/Dec in WCS sidecar for {os.path.basename(fits_path)}")
+            return
+
+        if not (-90.0 <= dec <= 90.0):
+            print(f"⚠️ Skipping WCS injection due to invalid declination: {dec}")
+            return
 
         with fits.open(fits_path, mode='update') as hdul:
-            target_header = hdul[0].header
+            hdr = hdul[0].header
+            naxis1 = hdr.get('NAXIS1', 2048)
+            naxis2 = hdr.get('NAXIS2', 2048)
 
-            # Inject essential WCS fields
-            for key in ['CRVAL1', 'CRVAL2', 'CRPIX1', 'CRPIX2',
-                        'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2',
-                        'CTYPE1', 'CTYPE2', 'CUNIT1', 'CUNIT2']:
-                if key in wcs_header:
-                    target_header[key] = wcs_header[key]
+            hdr['CRVAL1'] = ra
+            hdr['CRVAL2'] = dec
+            hdr['CRPIX1'] = naxis1 / 2
+            hdr['CRPIX2'] = naxis2 / 2
+            hdr['CD1_1'] = wcs_info.get('CDELT1', -0.000277778)
+            hdr['CD1_2'] = 0.0
+            hdr['CD2_1'] = 0.0
+            hdr['CD2_2'] = wcs_info.get('CDELT2', 0.000277778)
+            hdr['CTYPE1'] = 'RA---TAN'
+            hdr['CTYPE2'] = 'DEC--TAN'
+            hdr['CUNIT1'] = 'deg'
+            hdr['CUNIT2'] = 'deg'
+            hdr['RADECSYS'] = 'ICRS'
+            hdr['EQUINOX'] = 2000.0
+            if 'CROTA2' in wcs_info:
+                hdr['CROTA2'] = wcs_info['CROTA2']
+            hdr['WCS_INJ'] = (True, 'WCS injected from ASTAP sidecar')
 
-            target_header['WCS_INJ'] = (True, 'WCS injected from sidecar file')
             hdul.flush()
 
         print(f"✅ WCS injected from sidecar into {os.path.basename(fits_path)}")
