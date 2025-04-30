@@ -8,6 +8,15 @@ import gc
 from wcs_utils import inject_wcs_from_sidecar
 import shutil
 
+AUTO_DARK_SCALE = True
+
+MASTER_NAMES = {
+    'bias': 'master_bias',
+    'dark': 'master_dark',
+    'flat': 'master_flat',
+    'dark_flat': 'master_dark_flat'
+}
+
 def inject_minimal_sip(header):
     """Inject minimal fake SIP headers and fix CTYPE for compatibility with Tycho and astropy."""
     try:
@@ -23,6 +32,25 @@ def inject_minimal_sip(header):
         print("✅ Minimal SIP keywords and CTYPE updated for compatibility.")
     except Exception as e:
         print(f"⚠️ Failed to inject SIP headers: {e}")
+
+def skewness(data):
+    mean = np.mean(data)
+    std = np.std(data)
+    if std == 0:
+        return 0
+    return np.mean(((data - mean) / std) ** 3)
+
+def optimize_dark_scale(light, dark):
+    best_scale = 1.0
+    min_skew = float('inf')
+    for scale in np.arange(0.95, 1.05, 0.0025):
+        corrected = light - (dark * scale)
+        s = abs(skewness(corrected))
+        if s < min_skew:
+            min_skew = s
+            best_scale = scale
+    print(f"🔬 Optimal dark scale factor determined: {best_scale:.4f}")
+    return best_scale
 
 def load_fits_data(path):
     if os.path.exists(path):
@@ -49,9 +77,15 @@ def calibrate_image(light_path, use_master=False, master_dark_path=None, master_
 
         if exposure_light and exposure_dark and exposure_dark != 0:
             scale_factor = exposure_light / exposure_dark
-            light_data -= master_dark * scale_factor
         else:
-            light_data -= master_dark
+            scale_factor = 1.0
+
+        if AUTO_DARK_SCALE:
+            scale_factor *= optimize_dark_scale(light_data, master_dark)
+        else:
+            scale_factor *= 1.015  # static fudge factor
+
+        light_data -= master_dark * scale_factor
 
     if use_master and master_flat_path and os.path.exists(master_flat_path):
         with fits.open(master_flat_path, memmap=False) as flat_hdul:
@@ -185,7 +219,7 @@ def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     master = create_master_frame(image_list, dark_flat_path=dark_flat_path)
     if master is not None:
         save_master_frame(master, header, output_folder, name)
-       
+
     # 🧹 Free memory
     del master
     del header
@@ -209,15 +243,16 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
     # Build masters in parallel
     tasks = {}
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        if bias_images:
-            tasks['bias'] = executor.submit(build_and_save_master, bias_images, output_folder, "master_bias")
-        if dark_images:
-            tasks['dark'] = executor.submit(build_and_save_master, dark_images, output_folder, "master_dark")
-        if dark_flat_images:
-            tasks['dark_flat'] = executor.submit(build_and_save_master, dark_flat_images, output_folder, "master_dark_flat")
-        if flat_images:
-            tasks['flat'] = executor.submit(build_and_save_master, flat_images, output_folder, "master_flat",
-            dark_flat_path=os.path.join(output_folder, "master_dark_flat.fits") if dark_flat_images else None)
+        for key in MASTER_NAMES:
+            if key == 'bias' and bias_images:
+                tasks[key] = executor.submit(build_and_save_master, bias_images, output_folder, MASTER_NAMES[key])
+            elif key == 'dark' and dark_images:
+                tasks[key] = executor.submit(build_and_save_master, dark_images, output_folder, MASTER_NAMES[key])
+            elif key == 'dark_flat' and dark_flat_images:
+                tasks[key] = executor.submit(build_and_save_master, dark_flat_images, output_folder, MASTER_NAMES[key])
+            elif key == 'flat' and flat_images:
+                dark_flat_path = os.path.join(output_folder, f"{MASTER_NAMES['dark_flat']}_master.fits") if dark_flat_images else None
+                tasks[key] = executor.submit(build_and_save_master, flat_images, output_folder, MASTER_NAMES[key], dark_flat_path=dark_flat_path)
 
         for name, task in tasks.items():
             result = task.result()
@@ -233,9 +268,9 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
             elif name == 'dark_flat':
                 master_dark_flat = result
 
-    master_dark_path = os.path.join(output_folder, "master_dark.fits") if master_dark is not None else None
-    master_flat_path = os.path.join(output_folder, "master_flat.fits") if master_flat is not None else None
-    master_bias_path = os.path.join(output_folder, "master_bias.fits") if master_bias is not None else None
+    master_dark_path = os.path.join(output_folder, f"{MASTER_NAMES['dark']}_master.fits") if master_dark is not None else None
+    master_flat_path = os.path.join(output_folder, f"{MASTER_NAMES['flat']}_master.fits") if master_flat is not None else None
+    master_bias_path = os.path.join(output_folder, f"{MASTER_NAMES['bias']}_master.fits") if master_bias is not None else None
 
     calibrated_folder = os.path.join(output_folder, "calibrated")
     os.makedirs(calibrated_folder, exist_ok=True)
@@ -282,10 +317,10 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
         zip_path = os.path.join(output_folder, zip_name)
 
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for file_name in os.listdir(output_folder):
-                if file_name.endswith("_master.fits"):
-                    full_path = os.path.join(output_folder, file_name)
-                    zipf.write(full_path, arcname=file_name)
+            for key, filename in MASTER_NAMES.items():
+                path = os.path.join(output_folder, f"{filename}_master.fits")
+                if os.path.exists(path):
+                    zipf.write(path, arcname=f"{filename}_master.fits")
 
         log_callback(f"📦 Master calibration frames zipped successfully: {zip_name}")
     else:
