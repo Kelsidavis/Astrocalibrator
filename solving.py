@@ -22,6 +22,7 @@ def query_object_name(ra_deg, dec_deg, log_message):
     try:
         ra = float(ra_deg)
         dec = float(dec_deg)
+        print(f"🔍 Validating declination before SkyCoord: {dec}")
         if not (-90.0 <= dec <= 90.0):
             raise ValueError(f"Invalid declination: {dec}")
 
