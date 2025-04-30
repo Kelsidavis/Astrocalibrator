@@ -459,19 +459,20 @@ def run_plate_solving():
                 if session_name:
                     session_title_var.set(session_name)
 
-                    info = object_info.get(session_name)
-                    if info:
-                        object_description_var.set(info[0])
-                        object_distance_var.set(f"Distance: {info[1]}")
-                        cached_object_description = info[0]
-                        cached_object_distance = f"Distance: {info[1]}"
-                        log_message(f"🔭 Object found: {session_name} - {info[0]}, {info[1]}")
-                    else:
-                        object_description_var.set("No description available")
-                        object_distance_var.set("Unknown distance")
-                        cached_object_description = "No description available"
-                        cached_object_distance = "Unknown distance"
-                        log_message(f"⚠️ Object '{session_name}' not found in database.")
+                lookup_name = session_name.strip().title()
+
+                info = object_info.get(lookup_name)
+                if info:
+                    description, distance, _, _ = info
+                else:
+                    description = "No description available"
+                    distance = "Unknown distance"
+                    log_message(f"⚠️ Object '{lookup_name}' not found in database.")
+
+                object_description_var.set(description)
+                object_distance_var.set(f"Distance: {distance}")
+                cached_object_description = description
+                cached_object_distance = f"Distance: {distance}"
 
                 result_queue.put(session_name)
                 session_names_collected.append(session_name)

@@ -111,13 +111,17 @@ object_info = {
     "Messier 108": ("Spiral Galaxy in Ursa Major", "46 million ly", 165.8008, 55.6742),
     "Messier 109": ("Barred Spiral Galaxy in Ursa Major", "83 million ly", 178.0833, 53.3750),
     "Messier 110": ("Dwarf Elliptical Galaxy near Andromeda", "2.7 million ly", 10.0913, 41.6847),
-    "NGC 869": ("Double Cluster (h Persei)", "7,500 ly", 34.8, 57.15),
-    "NGC 884": ("Double Cluster (χ Persei)", "7,500 ly", 35.7, 56.85),
     "NGC 253": ("Sculptor Galaxy", "11.4 million ly", 11.888, -25.288),
     "NGC 281": ("Pacman Nebula", "9,500 ly", 13.469, 56.579),
+    "NGC 869": ("Double Cluster (h Persei)", "7,500 ly", 34.8, 57.15),
+    "NGC 884": ("Double Cluster (χ Persei)", "7,500 ly", 35.7, 56.85),
+    "NGC 457": ("Owl Cluster (ET Cluster)", "7,900 ly", 19.397, 58.329),
     "NGC 891": ("Edge-on Spiral Galaxy in Andromeda", "30 million ly", 35.638, 42.349),
+    "NGC 1333": ("Reflection Nebula in Perseus", "1,000 ly", 52.3, 31.3),
     "NGC 2244": ("Rosette Nebula Cluster", "5,200 ly", 97.5, 4.95),
     "NGC 2392": ("Eskimo Nebula", "2,870 ly", 112.467, 20.917),
+    "NGC 2683": ("UFO Galaxy", "30 million ly", 133.171, 33.421),
+    "NGC 2403": ("Spiral Galaxy in Camelopardalis", "8 million ly", 114.2, 65.6),
     "NGC 2903": ("Spiral Galaxy in Leo", "30 million ly", 143.042, 21.523),
     "NGC 3132": ("Eight-Burst Nebula", "2,000 ly", 151.0, -40.437),
     "NGC 3372": ("Carina Nebula", "8,500 ly", 160.0, -59.68),
@@ -125,12 +129,35 @@ object_info = {
     "NGC 4038": ("Antennae Galaxies (part)", "45 million ly", 180.470, -18.884),
     "NGC 4039": ("Antennae Galaxies (part)", "45 million ly", 180.478, -18.869),
     "NGC 4565": ("Needle Galaxy", "30–50 million ly", 189.086, 25.988),
-    "NGC 457": ("Owl Cluster (ET Cluster)", "7,900 ly", 19.397, 58.329),
     "NGC 5128": ("Centaurus A", "10–16 million ly", 201.3667, -43.0192),
     "NGC 5907": ("Splinter Galaxy", "53 million ly", 228.96, 56.328),
+    "NGC 6356": ("Globular Cluster in Ophiuchus", "49,200 ly", 260.9, -17.8),
+    "NGC 6357": ("Lobster Nebula", "5,500 ly", 261.6, -34.1),
+    "NGC 6543": ("Cat's Eye Nebula", "3,000 ly", 269.6, 66.6),
+    "NGC 6819": ("Foxhead Cluster", "7,200 ly", 295.3, 40.2),
+    "NGC 6826": ("Blinking Planetary Nebula", "2,200 ly", 296.2, 50.5),
+    "NGC 6888": ("Crescent Nebula", "5,000 ly", 20.7, 38.4),
     "NGC 6960": ("Veil Nebula (Western)", "1,470 ly", 312.5, 30.7),
+    "NGC 6946": ("Fireworks Galaxy", "25.2 million ly", 308.7, 60.1),
     "NGC 6992": ("Veil Nebula (Eastern)", "1,470 ly", 314.0, 31.0),
     "NGC 7000": ("North America Nebula", "2,590 ly", 312.75, 44.5),
+    "NGC 7006": ("Globular Cluster in Delphinus", "135,000 ly", 315.372, 16.187),
     "NGC 7023": ("Iris Nebula", "1,300 ly", 316.75, 68.17),
     "NGC 7293": ("Helix Nebula", "650 ly", 337.4, -20.833),
+    "NGC 7510": ("Open Cluster in Cepheus", "11,300 ly", 347.0, 60.6),
+    "NGC 7635": ("Bubble Nebula", "7,100 ly", 351.1, 61.2),
 }
+
+# 🔁 Auto-generate lowercase and compact aliases for catalog names
+for key in list(object_info.keys()):
+    value = object_info[key]
+
+    # Lowercase key (if not already present)
+    lower_key = key.lower()
+    if lower_key not in object_info:
+        object_info[lower_key] = value
+
+    # Compact version (e.g., "Messier 42" → "m42", "NGC 7000" → "ngc7000")
+    compact_key = key.lower().replace("messier ", "m").replace("ngc ", "ngc").replace("ic ", "ic").replace(" ", "")
+    if compact_key not in object_info:
+        object_info[compact_key] = value
