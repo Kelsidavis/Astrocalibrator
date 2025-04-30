@@ -7,8 +7,12 @@ from datetime import datetime
 import gc
 from wcs_utils import inject_wcs_from_sidecar
 import shutil
+from drizzle import drizzle_stack  # New CFA drizzle integration
+from scipy.stats import skew
+from collections import defaultdict
 
 AUTO_DARK_SCALE = True
+ENABLE_CFA_DRIZZLE = True
 
 MASTER_NAMES = {
     'bias': 'master_bias',
@@ -18,7 +22,6 @@ MASTER_NAMES = {
 }
 
 def inject_minimal_sip(header):
-    """Inject minimal fake SIP headers and fix CTYPE for compatibility with Tycho and astropy."""
     try:
         header['A_ORDER'] = 0
         header['B_ORDER'] = 0
@@ -33,65 +36,113 @@ def inject_minimal_sip(header):
     except Exception as e:
         print(f"⚠️ Failed to inject SIP headers: {e}")
 
-def skewness(data):
-    mean = np.mean(data)
-    std = np.std(data)
-    if std == 0:
-        return 0
-    return np.mean(((data - mean) / std) ** 3)
-
-def optimize_dark_scale(light, dark):
-    best_scale = 1.0
-    min_skew = float('inf')
-    for scale in np.arange(0.95, 1.05, 0.0025):
-        corrected = light - (dark * scale)
-        s = abs(skewness(corrected))
-        if s < min_skew:
-            min_skew = s
-            best_scale = scale
-    print(f"🔬 Optimal dark scale factor determined: {best_scale:.4f}")
-    return best_scale
-
 def load_fits_data(path):
-    if os.path.exists(path):
+    try:
         with fits.open(path, memmap=False) as hdul:
             return hdul[0].data.astype(np.float32)
-    return None
+    except Exception as e:
+        print(f"⚠️ Failed to load FITS data from {path}: {e}")
+        return None
 
-def calibrate_image(light_path, use_master=False, master_dark_path=None, master_flat_path=None, master_bias_path=None):
+def estimate_dark_scale(light_data, dark_data):
+    if not AUTO_DARK_SCALE:
+        return 1.015
+
+    best_scale = 1.0
+    best_skew = float('inf')
+
+    mask = light_data < 60000
+    if not np.any(mask):
+        return 1.015
+
+    for scale in np.linspace(0.9, 1.2, 61):
+        residual = (light_data - dark_data * scale)[mask]
+        s = abs(skew(residual.flatten()))
+        if s < best_skew:
+            best_skew = s
+            best_scale = scale
+    return best_scale
+
+def load_fits_grouped_by_filter(file_list, filter_sensitive=True):
+    grouped = defaultdict(list)
+    for path in file_list:
+        try:
+            hdr = fits.getheader(path)
+            key = hdr.get('FILTER', 'UNKNOWN').strip().upper() if filter_sensitive else 'ALL'
+            grouped[key].append(path)
+        except Exception:
+            grouped['UNKNOWN'].append(path)
+    return grouped
+
+def save_master_per_filter(groups, output_folder, base_name, dark_flat_paths=None, filter_sensitive=True):
+    path_map = {}
+    written = set()
+    for filt, paths in groups.items():
+        if not filter_sensitive and 'ALL' in written:
+            continue
+
+        stack = []
+        for p in paths:
+            data = fits.getdata(p).astype(np.float32)
+            if dark_flat_paths and filt in dark_flat_paths:
+                df = fits.getdata(dark_flat_paths[filt]).astype(np.float32)
+                data -= df
+            stack.append(data)
+
+        if not stack:
+            continue
+
+        combined = np.median(stack, axis=0).astype(np.float32)
+        header = fits.getheader(paths[0])
+        suffix = f"_{filt}" if filter_sensitive else ""
+        filename = os.path.join(output_folder, f"{base_name}{suffix}_master.fits")
+        fits.writeto(filename, combined, header, overwrite=True)
+        path_map[filt] = filename if filter_sensitive else filename
+        written.add('ALL' if not filter_sensitive else filt)
+    return path_map
+
+def load_filter_master(path_map, filter_name):
+    return path_map.get(filter_name) or path_map.get('UNKNOWN') or path_map.get('ALL')
+
+def calibrate_image(light_path, use_master=False, master_dark_paths=None, master_flat_paths=None, master_bias_paths=None):
     with fits.open(light_path, memmap=False) as hdul:
         light_data = hdul[0].data.astype(float)
         light_header = hdul[0].header.copy()
 
     exposure_light = light_header.get('EXPTIME', None)
+    filter_name = light_header.get('FILTER', 'UNKNOWN').strip().upper()
 
-    if use_master and master_bias_path and os.path.exists(master_bias_path):
-        with fits.open(master_bias_path, memmap=False) as bias_hdul:
-            master_bias = bias_hdul[0].data.astype(float)
-        light_data -= master_bias
+    master_dark = None
 
-    if use_master and master_dark_path and os.path.exists(master_dark_path):
-        with fits.open(master_dark_path, memmap=False) as dark_hdul:
-            master_dark = dark_hdul[0].data.astype(float)
-            exposure_dark = dark_hdul[0].header.get('EXPTIME', None)
+    if use_master and master_bias_paths:
+        bias_path = load_filter_master(master_bias_paths, filter_name)
+        if bias_path and os.path.exists(bias_path):
+            with fits.open(bias_path, memmap=False) as bias_hdul:
+                master_bias = bias_hdul[0].data.astype(float)
+            light_data -= master_bias
 
-        if exposure_light and exposure_dark and exposure_dark != 0:
-            scale_factor = exposure_light / exposure_dark
-        else:
-            scale_factor = 1.0
+    if use_master and master_dark_paths:
+        dark_path = load_filter_master(master_dark_paths, filter_name)
+        if dark_path and os.path.exists(dark_path):
+            with fits.open(dark_path, memmap=False) as dark_hdul:
+                master_dark = dark_hdul[0].data.astype(float)
+                exposure_dark = dark_hdul[0].header.get('EXPTIME', None)
 
-        if AUTO_DARK_SCALE:
-            scale_factor *= optimize_dark_scale(light_data, master_dark)
-        else:
-            scale_factor *= 1.015  # static fudge factor
+            scale_factor = estimate_dark_scale(light_data, master_dark)
+            if exposure_light and exposure_dark and exposure_dark != 0:
+                scale_factor *= exposure_light / exposure_dark
 
-        light_data -= master_dark * scale_factor
+            light_data -= master_dark * scale_factor
+            light_header['DARKSCL'] = (round(scale_factor, 4), 'Dark scale factor used')
 
-    if use_master and master_flat_path and os.path.exists(master_flat_path):
-        with fits.open(master_flat_path, memmap=False) as flat_hdul:
-            master_flat = flat_hdul[0].data.astype(float)
-        normalized_flat = master_flat / np.median(master_flat)
-        light_data /= normalized_flat
+    if use_master and master_flat_paths:
+        flat_path = load_filter_master(master_flat_paths, filter_name)
+        if flat_path and os.path.exists(flat_path):
+            with fits.open(flat_path, memmap=False) as flat_hdul:
+                master_flat = flat_hdul[0].data.astype(float)
+            normalized_flat = master_flat / np.median(master_flat)
+            light_data /= normalized_flat
+            light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used')
 
     return light_data, light_header
 
@@ -134,13 +185,13 @@ def load_fits_by_filter(file_list):
             filtered['UNKNOWN'].append(path)
     return filtered
 
-def calibrate_and_save(light_path, master_dark_path, master_flat_path, master_bias_path, calibrated_folder):
+def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_bias_paths, calibrated_folder):
     calibrated_data, header = calibrate_image(
         light_path,
         use_master=True,
-        master_dark_path=master_dark_path,
-        master_flat_path=master_flat_path,
-        master_bias_path=master_bias_path
+        master_dark_paths=master_dark_paths,
+        master_flat_paths=master_flat_paths,
+        master_bias_paths=master_bias_paths
     )
 
     header['CALIB'] = (True, 'Frame has been calibrated')
@@ -224,88 +275,82 @@ def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     del master
     del header
     gc.collect()
-
     return None
 
-def run_parallel_calibration(light_images, dark_images, flat_images, bias_images, output_folder, session_title="UnknownObject", log_callback=None, save_masters=False):
+def run_parallel_calibration(
+    light_by_filter,
+    dark_by_filter,
+    flat_by_filter,
+    bias_by_filter,
+    output_folder,
+    session_title="UnknownObject",
+    log_callback=None,
+    save_masters=False
+):
     if log_callback is None:
         log_callback = print
 
     log_callback("🛠️ Starting master calibration frame creation...")
 
-    master_dark = None
-    master_flat = None
-    master_bias = None
-    master_dark_flat = None
-
-    dark_flat_images = [img for img in dark_images if 'flat' in img.lower()]
-
-    # Build masters in parallel
-    tasks = {}
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        for key in MASTER_NAMES:
-            if key == 'bias' and bias_images:
-                tasks[key] = executor.submit(build_and_save_master, bias_images, output_folder, MASTER_NAMES[key])
-            elif key == 'dark' and dark_images:
-                tasks[key] = executor.submit(build_and_save_master, dark_images, output_folder, MASTER_NAMES[key])
-            elif key == 'dark_flat' and dark_flat_images:
-                tasks[key] = executor.submit(build_and_save_master, dark_flat_images, output_folder, MASTER_NAMES[key])
-            elif key == 'flat' and flat_images:
-                dark_flat_path = os.path.join(output_folder, f"{MASTER_NAMES['dark_flat']}_master.fits") if dark_flat_images else None
-                tasks[key] = executor.submit(build_and_save_master, flat_images, output_folder, MASTER_NAMES[key], dark_flat_path=dark_flat_path)
-
-        for name, task in tasks.items():
-            result = task.result()
-            if result is not None and log_callback:
-                log_callback(f"💾 Master {name.replace('_', ' ').title()} created.")
-
-            if name == 'bias':
-                master_bias = result
-            elif name == 'dark':
-                master_dark = result
-            elif name == 'flat':
-                master_flat = result
-            elif name == 'dark_flat':
-                master_dark_flat = result
-
-    master_dark_path = os.path.join(output_folder, f"{MASTER_NAMES['dark']}_master.fits") if master_dark is not None else None
-    master_flat_path = os.path.join(output_folder, f"{MASTER_NAMES['flat']}_master.fits") if master_flat is not None else None
-    master_bias_path = os.path.join(output_folder, f"{MASTER_NAMES['bias']}_master.fits") if master_bias is not None else None
-
     calibrated_folder = os.path.join(output_folder, "calibrated")
     os.makedirs(calibrated_folder, exist_ok=True)
 
-    log_callback(f"🔧 Starting calibration of {len(light_images)} light frames...")
+    master_dark_paths = {}
+    master_flat_paths = {}
+    master_bias_paths = {}
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
-        futures = [
-            executor.submit(
-                calibrate_and_save,
-                light_path,
-                master_dark_path,
-                master_flat_path,
-                master_bias_path,
-                calibrated_folder,
-            )
-            for light_path in light_images
-        ]
+    for filter_name in light_by_filter:
+        dark_paths = dark_by_filter.get(filter_name, [])
+        flat_paths = flat_by_filter.get(filter_name, [])
+        bias_paths = bias_by_filter.get(filter_name, [])
 
-        completed = 0
-        total = len(futures)
-        for future in concurrent.futures.as_completed(futures):
+        log_callback(f"🔧 Calibrating filter: {filter_name} ({len(light_by_filter[filter_name])} frames)")
+
+        if dark_paths:
+            dark = create_master_frame(dark_paths)
+            if dark is not None:
+                path = save_master_frame(dark, fits.getheader(dark_paths[0]), output_folder, f"{filter_name}_master_dark")
+                master_dark_paths[filter_name] = path
+
+        if flat_paths:
+            flat = create_master_frame(flat_paths)
+            if flat is not None:
+                path = save_master_frame(flat, fits.getheader(flat_paths[0]), output_folder, f"{filter_name}_master_flat")
+                master_flat_paths[filter_name] = path
+
+        if bias_paths:
+            bias = create_master_frame(bias_paths)
+            if bias is not None:
+                path = save_master_frame(bias, fits.getheader(bias_paths[0]), output_folder, f"{filter_name}_master_bias")
+                master_bias_paths[filter_name] = path
+
+    # Now dispatch calibration threads using file paths
+    futures = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for filter_name, light_paths in light_by_filter.items():
+            for light_path in light_paths:
+                futures.append(
+                    executor.submit(
+                        calibrate_and_save,
+                        light_path,
+                        master_dark_paths,
+                        master_flat_paths,
+                        master_bias_paths,
+                        calibrated_folder
+                    )
+                )
+
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
             try:
                 result = future.result()
-                if result is not None:
-                    output_path, full_log_message = result
-                    log_callback(full_log_message)
-                else:
-                    log_callback("⚠️ Calibration returned None for a frame.")
-
-                completed += 1
-                if completed % 5 == 0 or completed == total:
-                    log_callback(f"🖼️ Calibrated {completed}/{total} frames...")
+                if result:
+                    log_callback(result)
+                if (i + 1) % 5 == 0:
+                    log_callback(f"🖼️ Calibrated {i + 1}/{len(futures)} frames...")
             except Exception as e:
-                log_callback(f"💥 Error in calibration: {e}")
+                log_callback(f"💥 Calibration failed: {e}")
+
+    log_callback("✅ Per-filter calibration complete.")
 
     # 🧹 ZIP master calibration frames if Save Masters is enabled
     if save_masters:
@@ -326,4 +371,4 @@ def run_parallel_calibration(light_images, dark_images, flat_images, bias_images
     else:
         log_callback("ℹ️ Save Masters not enabled. Skipping master frames ZIP creation.")
 
-    return master_dark, master_flat, master_bias
+    return master_dark_paths, master_flat_paths, master_bias_paths

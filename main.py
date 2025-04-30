@@ -31,7 +31,7 @@ from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
 import glob
-from calibration import run_parallel_calibration
+from calibration import run_parallel_calibration, load_fits_by_filter
 
 
 # Globals for buttons
@@ -327,11 +327,16 @@ def _calibration_worker():
 
     os.makedirs(temp_folder, exist_ok=True)
 
-    run_parallel_calibration(
-        light_images=light_files,
-        dark_images=dark_files,
-        flat_images=flat_files,
-        bias_images=bias_files,
+    light_by_filter = load_fits_by_filter(light_files)
+    dark_by_filter = load_fits_by_filter(dark_files)
+    flat_by_filter = load_fits_by_filter(flat_files)
+    bias_by_filter = load_fits_by_filter(bias_files)
+
+    master_dark_paths, master_flat_paths, master_bias_paths = run_parallel_calibration(
+        light_by_filter=light_by_filter,
+        dark_by_filter=dark_by_filter,
+        flat_by_filter=flat_by_filter,
+        bias_by_filter=bias_by_filter,
         output_folder=output_folder,
         session_title=session_title_var.get(),
         log_callback=log_message,
