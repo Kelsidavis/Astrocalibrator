@@ -177,3 +177,25 @@ for key in list(object_info.keys()):
     compact_key = key.lower().replace("messier ", "m").replace("ngc ", "ngc").replace("ic ", "ic").replace(" ", "")
     if compact_key not in object_info:
         object_info[compact_key] = value
+
+# 🛡️ Validate and clean invalid object entries
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+
+bad_keys = []
+for key, (desc, dist, ra, dec) in object_info.items():
+    try:
+        ra = float(ra)
+        dec = float(dec)
+        if not (-90 <= dec <= 90):
+            raise ValueError(f"Dec out of bounds: {dec}")
+        if not (0 <= ra <= 360):
+            raise ValueError(f"RA out of bounds: {ra}")
+        _ = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
+    except Exception as e:
+        print(f"⚠️ Invalid object '{key}': {e}")
+        bad_keys.append(key)
+
+for key in bad_keys:
+    del object_info[key]
+    print(f"🧹 Removed invalid object: {key}")
