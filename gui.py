@@ -629,6 +629,14 @@ def pop_log_out_to_window():
     log_textbox.see('end')
 
     log_embedded = False
+    
+    # Bring both windows to the foreground
+    root.lift()  # Bring main window to the foreground
+    root.focus_force()  # Force focus on main window
+    
+    # Bring log window to the foreground after a short delay
+    # This ensures both windows are visible to the user
+    root.after(100, lambda: external_log_window.lift())
 
 
 def browse_file(var):
