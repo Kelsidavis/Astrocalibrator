@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Application specific
+# Settings directory is now in user's home directory
+# ~/Library/Application Support/Astrocalibrator on macOS
+# %APPDATA%/Astrocalibrator on Windows
+# ~/.config/Astrocalibrator on Linux
+
+# Temporary files
+*.tmp
+*.log
+temp/
+tmp/
+
+# Nix
+.direnv/
+result
+result-*
+
+# Calibration output files
+calibrated_*
+*.fits
+*.fit
+*.fts
+# Uncomment if you want to ignore all image files
+# *.jpg
+# *.jpeg
+# *.png
+# *.tif
+# *.tiff
