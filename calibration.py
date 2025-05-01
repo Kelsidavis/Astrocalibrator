@@ -33,13 +33,20 @@ def normalize_filter_name(raw):
         return 'L'
     return raw
 
-def create_master_flat_scaled(flat_paths):
-    """Create a master flat using pixel-wise normalization."""
+def create_master_flat_scaled(flat_paths, dark_flat_path=None):
+    """Create a master flat by subtracting matching dark flat and normalizing."""
     stack = []
+
+    if dark_flat_path and os.path.exists(dark_flat_path):
+        dark_flat = load_fits_data(dark_flat_path)
+    else:
+        dark_flat = None
 
     for path in flat_paths:
         try:
             data = fits.getdata(path).astype(np.float32)
+            if dark_flat is not None:
+                data -= dark_flat
             norm = np.median(data)
             if norm == 0:
                 continue
@@ -399,6 +406,8 @@ def run_parallel_calibration(
         log_callback(f"🧪 Using global master dark ({len(all_darks)} frames), {len(flat_paths)} flats")
 
         if flat_paths:
+            dark_flat_path = None  # TODO: load per-filter dark flat path if provided
+            flat = create_master_flat_scaled(flat_paths, dark_flat_path=dark_flat_path)
             flat = create_master_flat_scaled(flat_paths)
             if flat is not None:
                 flat_median = np.median(flat)
