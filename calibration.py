@@ -21,6 +21,18 @@ MASTER_NAMES = {
     'dark_flat': 'master_dark_flat'
 }
 
+def normalize_filter_name(raw):
+    raw = (raw or 'UNKNOWN').strip().upper()
+    if raw in ['HA', 'H-ALPHA', 'HΑ', 'HΑLPHA']:
+        return 'HA'
+    elif raw in ['OIII', 'O3']:
+        return 'OIII'
+    elif raw in ['SII', 'S2']:
+        return 'SII'
+    elif raw in ['L', 'LUM', 'LUMINANCE']:
+        return 'LUMINANCE'
+    return raw
+
 def inject_minimal_sip(header):
     try:
         header['A_ORDER'] = 0
@@ -102,7 +114,14 @@ def save_master_per_filter(groups, output_folder, base_name, dark_flat_paths=Non
     return path_map
 
 def load_filter_master(path_map, filter_name):
-    return path_map.get(filter_name) or path_map.get('UNKNOWN') or path_map.get('ALL')
+    path = path_map.get(filter_name)
+    if not path:
+        log_message(f"⚠️ No master for filter '{filter_name}', trying fallback...")
+        path = path_map.get('UNKNOWN') or path_map.get('ALL')
+    if not path:
+        log_message(f"❌ No suitable master file found for filter '{filter_name}'")
+    return path
+
 
 def calibrate_image(light_path, use_master=False, master_dark_paths=None, master_flat_paths=None, master_bias_paths=None):
     with fits.open(light_path, memmap=False) as hdul:
@@ -169,7 +188,7 @@ def create_master_frame(image_list, method='median', dark_flat_path=None):
         return np.mean(stack, axis=0).astype(np.float32)
 
 def save_master_frame(data, header, output_folder, name):
-    output_path = os.path.join(output_folder, f"{name}_master.fits")
+    output_path = os.path.join(output_folder, f"{name}.fits")
     fits.writeto(output_path, data, header=header, overwrite=True)
     return output_path
 
@@ -179,7 +198,7 @@ def load_fits_by_filter(file_list):
     for path in file_list:
         try:
             hdr = fits.getheader(path)
-            filter_name = hdr.get('FILTER', 'UNKNOWN')
+            filter_name = normalize_filter_name(hdr.get('FILTER'))
             filtered[filter_name].append(path)
         except Exception:
             filtered['UNKNOWN'].append(path)
@@ -352,7 +371,6 @@ def run_parallel_calibration(
 
     log_callback("✅ Per-filter calibration complete.")
 
-    # 🧹 ZIP master calibration frames if Save Masters is enabled
     if save_masters:
         log_callback("📦 Creating ZIP archive of master calibration frames...")
 
@@ -362,10 +380,10 @@ def run_parallel_calibration(
         zip_path = os.path.join(output_folder, zip_name)
 
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for key, filename in MASTER_NAMES.items():
-                path = os.path.join(output_folder, f"{filename}_master.fits")
-                if os.path.exists(path):
-                    zipf.write(path, arcname=f"{filename}_master.fits")
+            for file in os.listdir(output_folder):
+                if file.endswith("_master_dark.fits") or file.endswith("_master_flat.fits") or file.endswith("_master_bias.fits"):
+                    path = os.path.join(output_folder, file)
+                    zipf.write(path, arcname=file)
 
         log_callback(f"📦 Master calibration frames zipped successfully: {zip_name}")
     else:

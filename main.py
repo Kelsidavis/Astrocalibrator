@@ -315,13 +315,13 @@ def _calibration_worker():
 
     output_folder = output_folder_var.get()
     if not has_enough_space(output_folder, 500_000_000):  # Require 500MB minimum
-    log_message("❌ Not enough disk space. Please free at least 500MB before running calibration.")
-    progress_label_var.set("Insufficient disk space")
-    progress_bar.stop()
-    progress_bar.config(mode="determinate")
-    progress_var.set(0)
-    calibrate_btn.config(state='normal')
-    return
+        log_message("❌ Not enough disk space. Please free at least 500MB before running calibration.")
+        progress_label_var.set("Insufficient disk space")
+        progress_bar.stop()
+        progress_bar.config(mode="determinate")
+        progress_var.set(0)
+        calibrate_btn.config(state='normal')
+        return
 
     if cached_object_description:
         object_description_var.set(cached_object_description)
