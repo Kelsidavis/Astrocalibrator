@@ -113,13 +113,13 @@ def save_master_per_filter(groups, output_folder, base_name, dark_flat_paths=Non
         written.add('ALL' if not filter_sensitive else filt)
     return path_map
 
-def load_filter_master(path_map, filter_name):
+def load_filter_master(path_map, filter_name, log_callback=print):
     path = path_map.get(filter_name)
     if not path:
-        log_message(f"⚠️ No master for filter '{filter_name}', trying fallback...")
+        log_callback(f"⚠️ No master for filter '{filter_name}', trying fallback...")
         path = path_map.get('UNKNOWN') or path_map.get('ALL')
     if not path:
-        log_message(f"❌ No suitable master file found for filter '{filter_name}'")
+        log_callback(f"❌ No suitable master file found for filter '{filter_name}'")
     return path
 
 

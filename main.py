@@ -377,16 +377,6 @@ def _calibration_worker():
     except Exception as e:
         log_message(f"⚠️ Cleanup warning: {e}")
 
-    # 🧹 Delete leftover sidecar files
-    try:
-        for pattern in ["*.wcs", "*.ini", "*.bak"]:
-            for leftover in glob.glob(os.path.join(output_folder, pattern)):
-                os.remove(leftover)
-                print(f"🧹 Deleted leftover file: {leftover}")
-        log_message("🧹 Deleted stray .wcs, .ini, and .bak files.")
-    except Exception as e:
-        log_message(f"⚠️ Failed during post-calibration cleanup: {e}")
-
 # 💾 Create ZIP archive of calibrated light frames and delete calibrated folder
     try:
         session_name_cleaned = session_title_var.get().replace(' ', '_').replace(':', '').replace('/', '_')
@@ -435,6 +425,16 @@ def _calibration_worker():
                     log_message(f"🧹 Deleted leftover {master_name}.")
     except Exception as e:
         log_message(f"⚠️ Failed to delete leftover master files: {e}")
+
+    # 🧹 Delete leftover sidecar files
+    try:
+        for pattern in ["*.wcs", "*.ini", "*.bak"]:
+            for leftover in glob.glob(os.path.join(output_folder, pattern)):
+                os.remove(leftover)
+                print(f"🧹 Deleted leftover file: {leftover}")
+        log_message("🧹 Deleted stray .wcs, .ini, and .bak files.")
+    except Exception as e:
+        log_message(f"⚠️ Failed during post-calibration cleanup: {e}")
 
     # ✅ Restore GUI
     progress_bar.stop()
@@ -733,8 +733,15 @@ def check_solve_and_calibrate_results(result_queue):
         else:
             log_message("⚠️ Calibrate button not yet available to re-enable.")
         log_message(f"✅ Solve + Calibrate complete.")
-        global_cleanup(output_folder_var.get())
-        log_message("🧹 Global cleanup complete.")
+        # 🧹 Delete leftover WCS, INI, BAK files now that both solving and calibration are complete
+        try:
+            for pattern in ["*.wcs", "*.ini", "*.bak"]:
+                for leftover in glob.glob(os.path.join(output_folder_var.get(), pattern)):
+                    os.remove(leftover)
+                    print(f"🧹 Deleted leftover file: {leftover}")
+            log_message("🧹 Deleted leftover .wcs, .ini, and .bak files.")
+        except Exception as e:
+            log_message(f"⚠️ Failed to clean leftover sidecar/config files: {e}")
 
 def start_processing():
     if not output_folder_var.get():
