@@ -21,6 +21,26 @@ MASTER_NAMES = {
     'dark_flat': 'master_dark_flat'
 }
 
+def create_master_flat_scaled(flat_paths):
+    """Create a master flat using pixel-wise normalization."""
+    stack = []
+
+    for path in flat_paths:
+        try:
+            data = fits.getdata(path).astype(np.float32)
+            norm = np.median(data)
+            if norm == 0:
+                continue
+            stack.append(data / norm)
+        except Exception as e:
+            print(f"⚠️ Failed to normalize flat: {path} – {e}")
+
+    if not stack:
+        return None
+
+    combined = np.mean(stack, axis=0).astype(np.float32)
+    return combined
+
 def normalize_filter_name(raw):
     raw = (raw or 'UNKNOWN').strip().upper()
     if raw in ['HA', 'H-ALPHA', 'HΑ', 'HΑLPHA']:
@@ -333,7 +353,7 @@ def run_parallel_calibration(
                 master_dark_paths[filter_name] = path
 
         if flat_paths:
-            flat = create_master_frame(flat_paths)
+            flat = create_master_flat_scaled(flat_paths)
             if flat is not None:
                 path = save_master_frame(flat, fits.getheader(flat_paths[0]), output_folder, f"{filter_name}_master_flat")
                 master_flat_paths[filter_name] = path
