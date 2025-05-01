@@ -7,12 +7,10 @@ from datetime import datetime
 import gc
 from wcs_utils import inject_wcs_from_sidecar
 import shutil
-from drizzle import drizzle_stack  # New CFA drizzle integration
 from scipy.stats import skew
 from collections import defaultdict
 
 AUTO_DARK_SCALE = True
-ENABLE_CFA_DRIZZLE = True
 
 MASTER_NAMES = {
     'bias': 'master_bias',
