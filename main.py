@@ -31,7 +31,7 @@ from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
 import glob
-from calibration import run_parallel_calibration, load_fits_by_filter
+from calibration import run_parallel_calibration, load_fits_by_filter, normalize_filter_name
 
 
 # Globals for buttons

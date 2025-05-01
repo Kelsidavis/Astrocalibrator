@@ -21,6 +21,18 @@ MASTER_NAMES = {
     'dark_flat': 'master_dark_flat'
 }
 
+def normalize_filter_name(raw):
+    raw = (raw or 'UNKNOWN').strip().upper()
+    if raw in ['HA', 'H-ALPHA', 'HΑ', 'HΑLPHA']:
+        return 'HA'
+    elif raw in ['OIII', 'O3']:
+        return 'OIII'
+    elif raw in ['SII', 'S2']:
+        return 'SII'
+    elif raw in ['L', 'LUM', 'LUMINANCE']:
+        return 'LUMINANCE'
+    return raw
+
 def create_master_flat_scaled(flat_paths):
     """Create a master flat using pixel-wise normalization."""
     stack = []
@@ -40,18 +52,6 @@ def create_master_flat_scaled(flat_paths):
 
     combined = np.mean(stack, axis=0).astype(np.float32)
     return combined
-
-def normalize_filter_name(raw):
-    raw = (raw or 'UNKNOWN').strip().upper()
-    if raw in ['HA', 'H-ALPHA', 'HΑ', 'HΑLPHA']:
-        return 'HA'
-    elif raw in ['OIII', 'O3']:
-        return 'OIII'
-    elif raw in ['SII', 'S2']:
-        return 'SII'
-    elif raw in ['L', 'LUM', 'LUMINANCE']:
-        return 'LUMINANCE'
-    return raw
 
 def inject_minimal_sip(header):
     try:
