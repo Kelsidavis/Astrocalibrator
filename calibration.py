@@ -186,7 +186,7 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
 
     return light_data, light_header
 
-def create_master_frame(image_list, method='median', dark_flat_path=None):
+def create_master_frame(image_list, method='median', dark_flat_path=None, master_bias=None):
     if not image_list:
         return None
 
@@ -198,6 +198,8 @@ def create_master_frame(image_list, method='median', dark_flat_path=None):
                 dark_flat = load_fits_data(dark_flat_path)
                 if dark_flat is not None:
                     data -= dark_flat
+            if master_bias is not None:
+                data -= master_bias
             stack.append(data)
 
     if not stack:
@@ -357,10 +359,14 @@ def run_parallel_calibration(
     all_darks = sum(dark_by_filter.values(), [])
     if all_darks:
         log_callback(f"🛠️ Creating global master dark from {len(all_darks)} files...")
-        dark = create_master_frame(all_darks)
+
+        # Load global master bias if available
+        bias_path = master_bias_paths.get(next(iter(master_bias_paths), None))
+        master_bias = load_fits_data(bias_path) if bias_path else None
+
+        dark = create_master_frame(all_darks, master_bias=master_bias)
         if dark is not None:
             dark_path = save_master_frame(dark, fits.getheader(all_darks[0]), output_folder, "master_dark")
-            log_callback(f"🗂️ Using shared master dark for filters: {list(master_dark_paths.keys())}")
             for f in light_by_filter.keys():
                 master_dark_paths[f] = dark_path  # Share same dark for all filters
             log_callback(f"✅ Master dark saved to {dark_path}")
@@ -384,20 +390,20 @@ def run_parallel_calibration(
     else:
         log_callback("⚠️ No bias frames provided.")
 
-    # Now start per-filter logic      
-
+    # Now start per-filter logic
     for filter_name in light_by_filter:
         log_callback(f"🔧 Calibrating filter: {filter_name} ({len(light_by_filter[filter_name])} frames)")
 
-        dark_paths = dark_by_filter.get(filter_name, [])
         flat_paths = flat_by_filter.get(filter_name, [])
-        bias_paths = bias_by_filter.get(filter_name, [])
 
-        log_callback(f"🧪 Found {len(dark_paths)} darks, {len(flat_paths)} flats, {len(bias_paths)} biases")
+        log_callback(f"🧪 Using global master dark ({len(all_darks)} frames), {len(flat_paths)} flats")
 
         if flat_paths:
             flat = create_master_flat_scaled(flat_paths)
             if flat is not None:
+                flat_median = np.median(flat)
+                log_callback(f"📊 Master flat median for {filter_name}: {flat_median:.2f}")
+
                 path = save_master_frame(flat, fits.getheader(flat_paths[0]), output_folder, f"{filter_name}_master_flat")
                 master_flat_paths[filter_name] = path
             else:
