@@ -31,7 +31,7 @@ It is especially useful for archiving calibrated data for later processes in mul
 1. Install required Python modules:
 
 ```bash
-pip install pillow astropy astroquery
+pip install pillow astropy astroquery scipy
 ```
 
 2. Install ASTAP:
