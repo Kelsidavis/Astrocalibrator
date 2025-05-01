@@ -351,6 +351,13 @@ def _calibration_worker():
     flat_by_filter = load_fits_by_filter(flat_files)
     bias_by_filter = load_fits_by_filter(bias_files)
 
+    # 🔧 Normalize filters before calibration to ensure master matching consistency
+    light_by_filter = {normalize_filter_name(k): v for k, v in light_by_filter.items()}
+    dark_by_filter = {normalize_filter_name(k): v for k, v in dark_by_filter.items()}
+    flat_by_filter = {normalize_filter_name(k): v for k, v in flat_by_filter.items()}
+    bias_by_filter = {normalize_filter_name(k): v for k, v in bias_by_filter.items()}
+
+
     master_dark_paths, master_flat_paths, master_bias_paths = run_parallel_calibration(
         light_by_filter=light_by_filter,
         dark_by_filter=dark_by_filter,

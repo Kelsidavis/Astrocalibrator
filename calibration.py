@@ -114,6 +114,7 @@ def save_master_per_filter(groups, output_folder, base_name, dark_flat_paths=Non
     return path_map
 
 def load_filter_master(path_map, filter_name, log_callback=print):
+    filter_name = normalize_filter_name(filter_name)
     path = path_map.get(filter_name)
     if not path:
         log_callback(f"⚠️ No master for filter '{filter_name}', trying fallback...")
