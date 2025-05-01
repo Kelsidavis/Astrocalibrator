@@ -353,6 +353,39 @@ def run_parallel_calibration(
     master_flat_paths = {}
     master_bias_paths = {}
 
+    # Build one master dark for all filters
+    all_darks = sum(dark_by_filter.values(), [])
+    if all_darks:
+        log_callback(f"🛠️ Creating global master dark from {len(all_darks)} files...")
+        dark = create_master_frame(all_darks)
+        if dark is not None:
+            dark_path = save_master_frame(dark, fits.getheader(all_darks[0]), output_folder, "master_dark")
+            log_callback(f"🗂️ Using shared master dark for filters: {list(master_dark_paths.keys())}")
+            for f in light_by_filter.keys():
+                master_dark_paths[f] = dark_path  # Share same dark for all filters
+            log_callback(f"✅ Master dark saved to {dark_path}")
+        else:
+            log_callback("⚠️ Failed to create global master dark frame.")
+    else:
+        log_callback("⚠️ No dark frames provided.")
+
+            # Build one master bias for all filters
+    all_biases = sum(bias_by_filter.values(), [])
+    if all_biases:
+        log_callback(f"🛠️ Creating global master bias from {len(all_biases)} files...")
+        bias = create_master_frame(all_biases)
+        if bias is not None:
+            bias_path = save_master_frame(bias, fits.getheader(all_biases[0]), output_folder, "master_bias")
+            for f in light_by_filter.keys():
+                master_bias_paths[f] = bias_path  # Share same bias for all filters
+            log_callback(f"✅ Master bias saved to {bias_path}")
+        else:
+            log_callback("⚠️ Failed to create global master bias frame.")
+    else:
+        log_callback("⚠️ No bias frames provided.")
+
+    # Now start per-filter logic      
+
     for filter_name in light_by_filter:
         log_callback(f"🔧 Calibrating filter: {filter_name} ({len(light_by_filter[filter_name])} frames)")
 
@@ -362,14 +395,6 @@ def run_parallel_calibration(
 
         log_callback(f"🧪 Found {len(dark_paths)} darks, {len(flat_paths)} flats, {len(bias_paths)} biases")
 
-        if dark_paths:
-            dark = create_master_frame(dark_paths)
-            if dark is not None:
-                path = save_master_frame(dark, fits.getheader(dark_paths[0]), output_folder, f"{filter_name}_master_dark")
-                master_dark_paths[filter_name] = path
-            else:
-                log_callback(f"⚠️ Failed to create master dark for {filter_name}")
-
         if flat_paths:
             flat = create_master_flat_scaled(flat_paths)
             if flat is not None:
@@ -377,14 +402,6 @@ def run_parallel_calibration(
                 master_flat_paths[filter_name] = path
             else:
                 log_callback(f"⚠️ Failed to create master flat for {filter_name}")
-
-        if bias_paths:
-            bias = create_master_frame(bias_paths)
-            if bias is not None:
-                path = save_master_frame(bias, fits.getheader(bias_paths[0]), output_folder, f"{filter_name}_master_bias")
-                master_bias_paths[filter_name] = path
-            else:
-                log_callback(f"⚠️ Failed to create master bias for {filter_name}")
 
     # Now dispatch calibration threads using file paths
     futures = []
