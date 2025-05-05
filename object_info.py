@@ -143,7 +143,7 @@ object_info = {
     "NGC 6819": ("Foxhead Cluster", "7,200 ly", 295.3, 40.2),
     "NGC 6826": ("Blinking Planetary Nebula", "2,200 ly", 296.2, 50.5),
     "NGC 6888": ("Crescent Nebula", "5,000 ly", 20.7, 38.4),
-    "NGC 6910": ("Inchworm Cluster", "3,710 ly", 305.78, 40.775),
+    "NGC 6910": ("Inchworm Cluster", "3,710 ly", 312.3, 43.6),
     "NGC 6960": ("Veil Nebula (Western)", "1,470 ly", 312.5, 30.7),
     "NGC 6946": ("Fireworks Galaxy", "25.2 million ly", 308.7, 60.1),
     "NGC 6992": ("Veil Nebula (Eastern)", "1,470 ly", 314.0, 31.0),
