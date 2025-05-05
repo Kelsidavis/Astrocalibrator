@@ -7,9 +7,26 @@ from PIL import Image, ImageTk
 import io
 import json
 
-# Settings management: safe AppData location
-SETTINGS_FILE = os.path.join(os.getenv('APPDATA'), 'Astrocalibrator', 'settings.json')
-os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+# Settings management: cross-platform safe location
+def get_app_data_dir():
+    # Windows: use APPDATA
+    if os.name == 'nt' and os.getenv('APPDATA'):
+        return os.path.join(os.getenv('APPDATA'), 'Astrocalibrator')
+    # macOS: use ~/Library/Application Support
+    elif sys.platform == 'darwin':
+        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'Astrocalibrator')
+    # Linux/Unix: use XDG_CONFIG_HOME or ~/.config
+    else:
+        config_home = os.getenv('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+        return os.path.join(config_home, 'Astrocalibrator')
+
+# Ensure we have sys module imported
+import sys
+
+# Create settings directory and file path
+SETTINGS_DIR = get_app_data_dir()
+SETTINGS_FILE = os.path.join(SETTINGS_DIR, 'settings.json')
+os.makedirs(SETTINGS_DIR, exist_ok=True)
 
 def load_settings():
     try:
@@ -612,6 +629,14 @@ def pop_log_out_to_window():
     log_textbox.see('end')
 
     log_embedded = False
+    
+    # Bring both windows to the foreground
+    root.lift()  # Bring main window to the foreground
+    root.focus_force()  # Force focus on main window
+    
+    # Bring log window to the foreground after a short delay
+    # This ensures both windows are visible to the user
+    root.after(100, lambda: external_log_window.lift())
 
 
 def browse_file(var):
