@@ -211,8 +211,14 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
         if flat_path and os.path.exists(flat_path):
             with fits.open(flat_path, memmap=False) as flat_hdul:
                 master_flat = flat_hdul[0].data.astype(float)
-            normalized_flat = master_flat / np.median(master_flat)
-            light_data /= normalized_flat
+                #Flats need a little bump at least on my test bed perhaps this needs to be dynamically calculated and applied
+                median_flat = np.median(master_flat)
+                if median_flat > 0:
+                    normalized_flat = (master_flat / median_flat) ** 1.08  # Slight exaggeration
+                    light_data /= normalized_flat
+                    light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used (exp=1.1)')
+                else:
+                    print(f"⚠️ Flat median is zero in {flat_path}, skipping flat normalization.")
             light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used')
 
     return light_data, light_header
