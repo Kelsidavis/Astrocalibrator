@@ -409,6 +409,9 @@ def run_parallel_calibration(
     else:
         log_callback("⚠️ No dark frames provided.")
 
+dark_flat_files = flat_by_filter.get("DARK_FLAT", [])
+    grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_files)
+
     def get_matching_dark_flat(flat_path, grouped_dark_flats):
         try:
             hdr = fits.getheader(flat_path)
@@ -418,9 +421,6 @@ def run_parallel_calibration(
         except Exception as e:
             print(f"⚠️ Failed to match dark flat: {e}")
             return None
-
-    dark_flat_files = flat_by_filter.get("DARK_FLAT", [])
-    grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_files)
 
     master_flat_paths = {}
     for filter_name in flat_by_filter:
