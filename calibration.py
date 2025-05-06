@@ -219,8 +219,6 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
                     light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used (exp=1.1)')
                 else:
                     print(f"⚠️ Flat median is zero in {flat_path}, skipping flat normalization.")
-            light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used')
-
     return light_data, light_header
 
 def create_master_frame(image_list, method='median', dark_flat_path=None, master_bias=None):
@@ -326,6 +324,7 @@ def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_
                 print(f"ℹ️ WCS already present in {os.path.basename(output_path)}, skipping injection.")
     except Exception as e:
         print(f"⚠️ Exception during WCS injection: {e}")
+        return f"✅ Calibrated {os.path.basename(light_path)}"
 
 def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     if not image_list:
@@ -409,20 +408,6 @@ def run_parallel_calibration(
             log_callback("⚠️ Failed to create global master dark frame.")
     else:
         log_callback("⚠️ No dark frames provided.")
-
-    # --- Flats and dark flats ---
-    def group_dark_flats_by_filter_and_exptime(dark_flat_files):
-        grouped = defaultdict(list)
-        for path in dark_flat_files:
-            try:
-                hdr = fits.getheader(path)
-                filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
-                exptime = float(hdr.get("EXPTIME", -1))
-                if exptime > 0:
-                    grouped[(filt, exptime)].append(path)
-            except Exception as e:
-                print(f"⚠️ Failed to read dark flat: {path} – {e}")
-        return dict(grouped)
 
     def get_matching_dark_flat(flat_path, grouped_dark_flats):
         try:
