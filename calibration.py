@@ -9,6 +9,8 @@ from wcs_utils import inject_wcs_from_sidecar
 import shutil
 from scipy.stats import skew
 from collections import defaultdict
+import unicodedata
+import re
 
 AUTO_DARK_SCALE = True
 
@@ -46,22 +48,32 @@ def group_dark_flats_by_filter_and_exptime(dark_flat_files):
     return dict(grouped)
 
 def normalize_filter_name(raw):
-    raw = (raw or 'UNKNOWN').strip().upper()
-    if raw in ['HA', 'H-ALPHA', 'HALPHA', 'ΗΑ', 'ΗΑLPHA']:  # handles Greek alpha variants too
-        return 'HA'
-    elif raw in ['OIII', 'O3']:
-        return 'OIII'
-    elif raw in ['SII', 'S2']:
-        return 'SII'
-    elif raw in ['L', 'LUM', 'LUMINANCE']:
-        return 'L'
-    elif raw in ['R', 'RED']:
-        return 'R'
-    elif raw in ['G', 'GREEN']:
-        return 'G'
-    elif raw in ['B', 'BLUE']:
-        return 'B'
-    return raw
+    if not raw:
+        return 'UNKNOWN'
+
+    # Normalize Unicode: strip accents, convert full-width & compatibility characters
+    raw = unicodedata.normalize('NFKD', raw)
+    raw = ''.join(c for c in raw if not unicodedata.combining(c))
+
+    # Lowercase and strip non-alphanumerics
+    raw = raw.lower().strip()
+    raw = re.sub(r'[^a-z0-9]', '', raw)  # Remove hyphens, underscores, spaces, etc.
+
+    aliases = {
+        'ha': ['ha', 'halpha', 'hα', 'hαlpha', 'h-alpha'],
+        'oiii': ['oiii', 'o3'],
+        'sii': ['sii', 's2'],
+        'l': ['l', 'lum', 'luminance'],
+        'r': ['r', 'red'],
+        'g': ['g', 'green'],
+        'b': ['b', 'blue']
+    }
+
+    for norm, variants in aliases.items():
+        if raw in variants:
+            return norm.upper()
+
+    return raw.upper()  # default fallback
 
 def create_master_flat_scaled(flat_paths, dark_flat_path=None):
     """Create a master flat by subtracting matching dark flat and normalizing."""
