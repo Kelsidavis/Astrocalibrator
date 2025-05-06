@@ -422,14 +422,14 @@ def run_parallel_calibration(
     grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_files)
 
     def get_matching_dark_flat(flat_path, grouped_dark_flats):
-    try:
-        hdr = fits.getheader(flat_path)
-        filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
-        exptime = round(float(hdr.get("EXPTIME", -1)), 1)  # ⬅️ Round here
-        return grouped_dark_flats.get((filt, exptime), [None])[0]
-    except Exception as e:
-        print(f"⚠️ Failed to match dark flat: {e}")
-        return None
+        try:
+            hdr = fits.getheader(flat_path)
+            filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
+            exptime = round(float(hdr.get("EXPTIME", -1)), 1)  # ⬅️ Round here
+            return grouped_dark_flats.get((filt, exptime), [None])[0]
+        except Exception as e:
+            print(f"⚠️ Failed to match dark flat: {e}")
+            return None
 
     master_flat_paths = {}
     for filter_name in flat_by_filter:
