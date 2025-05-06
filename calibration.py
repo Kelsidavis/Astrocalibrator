@@ -302,7 +302,7 @@ def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_
         elif suppressed:
             log_lines.append(f"ℹ️ Missing 'FILTER' suppressed for likely OSC image.")
 
-    full_log_message = "\n".join(log_lines)
+    print("\n".join(log_lines))
 
     base_name = os.path.basename(light_path)
     output_path = os.path.join(
@@ -322,28 +322,22 @@ def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_
     else:
         print(f"⚠️ No sidecar found for {os.path.basename(light_path)}")
 
-    # 🛰️ Inject WCS only if missing
+    # 🛰️ Inject WCS from sidecar only if not already present
     from main import inject_wcs_from_sidecar
-    with fits.open(output_path, mode='update') as hdul:
-        header = hdul[0].header
-        if not any(k in header for k in ('CTYPE1', 'WCSAXES', 'CD1_1')):
-            success = inject_wcs_from_sidecar(output_path)
-            if success:
-                inject_minimal_sip(header)
-                hdul.flush()
-        else:
-            success = False
-            print(f"ℹ️ Skipping WCS injection; already present in {os.path.basename(output_path)}")
-
-    # ✨ If WCS injection succeeded, also inject minimal fake SIP
-    if success:
-        try:
-            with fits.open(output_path, mode='update') as hdul:
-                header = hdul[0].header
-                inject_minimal_sip(header)
-                hdul.flush()
-        except Exception as e:
-            print(f"⚠️ Failed to reopen calibrated FITS for SIP injection: {e}")
+    try:
+        with fits.open(output_path, mode='update') as hdul:
+            hdr = hdul[0].header
+            if not any(k in hdr for k in ('CD1_1', 'PC1_1', 'WCSAXES')):
+                success = inject_wcs_from_sidecar(output_path)
+                if success:
+                    inject_minimal_sip(hdr)
+                    hdul.flush()
+                else:
+                    print(f"⚠️ WCS injection failed for {os.path.basename(output_path)}")
+            else:
+                print(f"ℹ️ Skipping WCS injection; already present in {os.path.basename(output_path)}")
+    except Exception as e:
+        print(f"⚠️ WCS injection error: {e}")
 
     # 🧹 Free memory
     del calibrated_data
