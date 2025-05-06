@@ -514,11 +514,13 @@ def run_parallel_calibration(
         object_safe = session_title.replace(' ', '_').replace(':', '_').replace('/', '_') or 'UnknownObject'
         zip_name = f"{object_safe}_{session_date}_masters.zip"
         zip_path = os.path.join(output_folder, zip_name)
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for file in os.listdir(output_folder):
-                if file.endswith("_master_dark.fits") or file.endswith("_master_flat.fits") or file.endswith("_master_bias.fits"):
-                    path = os.path.join(output_folder, file)
-                    zipf.write(path, arcname=file)
+        # Collect master paths directly instead of scanning the folder
+        master_files = list(master_bias_paths.values()) + list(master_dark_paths.values()) + list(master_flat_paths.values())
+
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as zipf:
+            for path in master_files:
+                if path and os.path.exists(path):
+                    zipf.write(path, arcname=os.path.basename(path))
         log_callback(f"📦 Master calibration frames zipped successfully: {zip_name}")
     else:
         log_callback("ℹ️ Save Masters not enabled. Skipping master frames ZIP creation.")
