@@ -413,7 +413,7 @@ def _calibration_worker():
                     imaging_date = date_obs.split('T')[0]
 
         calibrated_folder = os.path.join(output_folder, "calibrated")
-        zip_filename = os.path.join(output_folder, f"{session_name_cleaned}_{imaging_date}_calibrated.zip")
+        zip_filename = os.path.join(output_folder, f"{session_name_cleaned}__{imaging_date}_calibrated.zip")
 
         # 🎬 Begin progress animation
         progress_label_var.set("📦 Zipping calibrated frames...")
