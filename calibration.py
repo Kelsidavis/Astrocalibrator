@@ -312,37 +312,20 @@ def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_
 
     fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
 
-    # 🛰️ Copy .wcs sidecar if available
-    original_sidecar = os.path.splitext(light_path)[0] + '.wcs'
-    calibrated_sidecar = os.path.splitext(output_path)[0] + '.wcs'
-
-    if os.path.exists(original_sidecar):
-        shutil.copyfile(original_sidecar, calibrated_sidecar)
-        print(f"📄 Copied WCS sidecar: {os.path.basename(calibrated_sidecar)}")
-    else:
-        print(f"⚠️ No sidecar found for {os.path.basename(light_path)}")
-
-    # 🛰️ Inject WCS from sidecar only if not already present
-    from main import inject_wcs_from_sidecar
+    # 🛰️ Inject WCS from sidecar only if not already present (skip object detection)
     try:
         with fits.open(output_path, mode='update') as hdul:
             hdr = hdul[0].header
             if not any(k in hdr for k in ('CD1_1', 'PC1_1', 'WCSAXES')):
-                success = inject_wcs_from_sidecar(output_path)
-                if success:
+                if inject_wcs_from_sidecar(output_path):
                     inject_minimal_sip(hdr)
                     hdul.flush()
                 else:
-                    print(f"⚠️ WCS injection failed for {os.path.basename(output_path)}")
+                    print(f"⚠️ WCS injection from sidecar failed for {os.path.basename(output_path)}")
             else:
-                print(f"ℹ️ Skipping WCS injection; already present in {os.path.basename(output_path)}")
+                print(f"ℹ️ WCS already present in {os.path.basename(output_path)}, skipping injection.")
     except Exception as e:
-        print(f"⚠️ WCS injection error: {e}")
-
-    # 🧹 Free memory
-    del calibrated_data
-    del header
-    gc.collect()
+        print(f"⚠️ Exception during WCS injection: {e}")
 
 def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     if not image_list:
