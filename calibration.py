@@ -220,7 +220,7 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
                 #Flats need a little bump at least on my test bed perhaps this needs to be dynamically calculated and applied
                 median_flat = np.median(master_flat)
                 if median_flat > 0:
-                    normalized_flat = (master_flat / median_flat) ** 1.1  # Slight exaggeration
+                    normalized_flat = (master_flat / median_flat) ** 1.09  # Slight exaggeration
                     light_data /= normalized_flat
                     light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used (exp=1.1)')
                 else:
