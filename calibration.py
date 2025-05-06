@@ -487,19 +487,28 @@ def run_parallel_calibration(
 
     if save_masters:
         log_callback("📦 Creating ZIP archive of master calibration frames...")
+
+        # Update progress label for zipping
+        from gui import progress_label_var, progress_label, root
+        progress_label_var.set("Zipping master frames...")
+        progress_label.config(fg='blue')
+        root.update_idletasks()
+
         session_date = datetime.now().strftime("%Y-%m-%d")
         object_safe = session_title.replace(' ', '_').replace(':', '_').replace('/', '_') or 'UnknownObject'
         zip_name = f"{object_safe}_{session_date}_masters.zip"
         zip_path = os.path.join(output_folder, zip_name)
-        # Collect master paths directly instead of scanning the folder
         master_files = list(master_bias_paths.values()) + list(master_dark_paths.values()) + list(master_flat_paths.values())
 
         with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as zipf:
             for path in master_files:
                 if path and os.path.exists(path):
                     zipf.write(path, arcname=os.path.basename(path))
+
+        progress_label_var.set("Idle")
+        progress_label.config(fg='black')
+        root.update_idletasks()
+
         log_callback(f"📦 Master calibration frames zipped successfully: {zip_name}")
-    else:
-        log_callback("ℹ️ Save Masters not enabled. Skipping master frames ZIP creation.")
 
     return master_dark_paths, master_flat_paths, master_bias_paths
