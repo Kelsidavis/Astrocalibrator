@@ -517,13 +517,4 @@ def run_parallel_calibration(
     else:
         log_callback("ℹ️ Save Masters not enabled. Skipping master frames ZIP creation.")
 
-            # 🧹 Clean up leftover .ini files in calibrated folder
-    for file in os.listdir(calibrated_folder):
-        if file.lower().endswith('.ini'):
-            try:
-                os.remove(os.path.join(calibrated_folder, file))
-                log_callback(f"🧹 Deleted: {file}")
-            except Exception as e:
-                log_callback(f"⚠️ Failed to delete {file}: {e}")
-
     return master_dark_paths, master_flat_paths, master_bias_paths

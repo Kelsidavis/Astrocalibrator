@@ -138,16 +138,38 @@ def initialize_main_widgets():
     ToolTip(calibrate_btn, "Plate solve light frames and apply calibration using selected masters and settings.")
     calibrate_btn.pack(side='left', padx=10)
 
-def global_cleanup(output_folder):
-    """Delete leftover .wcs and .ini files from output folder."""
-    patterns = ["*.wcs", "*.ini"]  # file types to delete
+def global_cleanup(output_folder, light_file_paths=None):
+    """
+    Delete leftover .wcs, .ini, and .bak files from:
+    - the output folder
+    - the folders containing the original light files
+    """
+    patterns = ["*.wcs", "*.ini", "*.bak"]
+
+    # Clean from output folder
     for pattern in patterns:
         for file_path in glob.glob(os.path.join(output_folder, pattern)):
             try:
                 os.remove(file_path)
-                print(f"🧹 Deleted leftover file: {file_path}")
+                print(f"🧹 Deleted from output: {file_path}")
             except Exception as e:
-                print(f"⚠️ Failed to delete {file_path}: {e}")
+                print(f"⚠️ Failed to delete from output: {file_path} – {e}")
+
+    # Clean from light file source directories
+    if light_file_paths:
+        cleaned_dirs = set()
+        for file_path in light_file_paths:
+            directory = os.path.dirname(file_path)
+            if directory in cleaned_dirs:
+                continue
+            for pattern in patterns:
+                for extra_file in glob.glob(os.path.join(directory, pattern)):
+                    try:
+                        os.remove(extra_file)
+                        print(f"🧹 Deleted from source: {extra_file}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to delete from source: {extra_file} – {e}")
+            cleaned_dirs.add(directory)
 
 def inject_wcs_from_sidecar(fits_path):
     """Inject WCS fields into a FITS file from its .wcs sidecar."""
@@ -442,6 +464,9 @@ def _calibration_worker():
         log_message("🧹 Deleted stray .wcs, .ini, and .bak files.")
     except Exception as e:
         log_message(f"⚠️ Failed during post-calibration cleanup: {e}")
+
+    # 🔧 Final cleanup of leftover files from output and light source folders
+    global_cleanup(output_folder, light_files)
 
     # ✅ Restore GUI
     progress_bar.stop()
