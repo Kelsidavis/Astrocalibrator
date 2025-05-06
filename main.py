@@ -416,18 +416,24 @@ def _calibration_worker():
         zip_filename = os.path.join(output_folder, f"{session_name_cleaned}__{imaging_date}_calibrated.zip")
 
         # 🎬 Begin progress animation
-        progress_label_var.set("📦 Zipping calibrated frames...")
+        fits_files = [
+            os.path.join(root_dir, file)
+            for root_dir, _, files in os.walk(calibrated_folder)
+            for file in files if file.endswith('.fits')
+        ]
+        total_files = len(fits_files)
+
+        progress_label_var.set("📦 Zipping calibrated frames... 0 of {}".format(total_files))
         progress_bar.config(mode='indeterminate')
         progress_bar.start()
         root.update_idletasks()
 
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root_dir, _, files in os.walk(calibrated_folder):
-                for file in files:
-                    if file.endswith('.fits'):
-                        file_path = os.path.join(root_dir, file)
-                        arcname = os.path.relpath(file_path, calibrated_folder)
-                        zipf.write(file_path, arcname)
+            for i, file_path in enumerate(fits_files, 1):
+                arcname = os.path.relpath(file_path, calibrated_folder)
+                zipf.write(file_path, arcname)
+                progress_label_var.set(f"📦 Zipping calibrated frames... {i} of {total_files}")
+                root.update_idletasks()
 
         # ✅ Done
         progress_bar.stop()
@@ -435,11 +441,6 @@ def _calibration_worker():
         progress_var.set(100)
         progress_label_var.set("✅ ZIP archive created.")
         log_message(f"📦 Created ZIP archive: {zip_filename}")
-
-    except Exception as e:
-        progress_bar.stop()
-        progress_label_var.set("❌ ZIP creation failed.")
-        log_message(f"⚠️ Failed to create calibrated ZIP or delete calibrated folder: {e}")
 
         # 🧹 Remove calibrated folder after zipping
         if os.path.exists(calibrated_folder):
