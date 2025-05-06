@@ -49,8 +49,15 @@ def inject_wcs_from_sidecar(fits_path):
             hdr['CD1_2'] = 0.0
             hdr['CD2_1'] = 0.0
             hdr['CD2_2'] = wcs_info.get('CDELT2', 0.000277778)
-            hdr['CTYPE1'] = 'RA---TAN'
-            hdr['CTYPE2'] = 'DEC--TAN'
+            #Append -SIP
+            ctype1 = hdr.get('CTYPE1', 'RA---TAN')
+            ctype2 = hdr.get('CTYPE2', 'DEC--TAN')
+            if '-SIP' not in ctype1:
+                ctype1 += '-SIP'
+            if '-SIP' not in ctype2:
+                ctype2 += '-SIP'
+            hdr['CTYPE1'] = ctype1
+            hdr['CTYPE2'] = ctype2
             hdr['CUNIT1'] = 'deg'
             hdr['CUNIT2'] = 'deg'
             hdr['RADECSYS'] = 'ICRS'
