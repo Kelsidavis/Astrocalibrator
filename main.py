@@ -414,7 +414,6 @@ def _calibration_worker():
                     imaging_date = date_obs.split('T')[0]
 
         calibrated_folder = os.path.join(output_folder, "calibrated")
-
         zip_filename = os.path.join(output_folder, f"{session_name_cleaned}_{imaging_date}_calibrated.zip")
 
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -434,10 +433,6 @@ def _calibration_worker():
 
     except Exception as e:
         log_message(f"⚠️ Failed to create calibrated ZIP or delete calibrated folder: {e}")
-
-        log_message(f"📦 Created ZIP archive: {zip_filename}")
-    except Exception as e:
-        log_message(f"⚠️ Failed to create ZIP archive: {e}")
 
     # 🧹 Remove leftover master calibration files if not saving masters
     try:
