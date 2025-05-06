@@ -47,7 +47,7 @@ def group_dark_flats_by_filter_and_exptime(dark_flat_files):
 
 def normalize_filter_name(raw):
     raw = (raw or 'UNKNOWN').strip().upper()
-    if raw in ['HA', 'H-ALPHA', 'HΑ', 'HΑLPHA']:
+    if raw in ['HA', 'H-ALPHA', 'HALPHA', 'ΗΑ', 'ΗΑLPHA']:  # handles Greek alpha variants too
         return 'HA'
     elif raw in ['OIII', 'O3']:
         return 'OIII'
@@ -55,6 +55,12 @@ def normalize_filter_name(raw):
         return 'SII'
     elif raw in ['L', 'LUM', 'LUMINANCE']:
         return 'L'
+    elif raw in ['R', 'RED']:
+        return 'R'
+    elif raw in ['G', 'GREEN']:
+        return 'G'
+    elif raw in ['B', 'BLUE']:
+        return 'B'
     return raw
 
 def create_master_flat_scaled(flat_paths, dark_flat_path=None):
