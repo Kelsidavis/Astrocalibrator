@@ -491,6 +491,15 @@ def run_parallel_calibration(
 
     log_callback("✅ Per-filter calibration complete.")
 
+        # 🧹 Clean up per-filter master flats unless saving masters
+    if not save_masters:
+        for flat_path in master_flat_paths.values():
+            try:
+                os.remove(flat_path)
+                log_callback(f"🧹 Deleted master flat: {os.path.basename(flat_path)}")
+            except Exception as e:
+                log_callback(f"⚠️ Failed to delete {flat_path}: {e}")
+
     if save_masters:
         log_callback("📦 Creating ZIP archive of master calibration frames...")
         session_date = datetime.now().strftime("%Y-%m-%d")
