@@ -214,7 +214,7 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
                 #Flats need a little bump at least on my test bed perhaps this needs to be dynamically calculated and applied
                 median_flat = np.median(master_flat)
                 if median_flat > 0:
-                    normalized_flat = (master_flat / median_flat) ** 1.12  # Slight exaggeration
+                    normalized_flat = (master_flat / median_flat) ** 1.4  # Slight exaggeration
                     light_data /= normalized_flat
                     light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used (exp=1.1)')
                 else:
@@ -322,9 +322,18 @@ def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_
     else:
         print(f"⚠️ No sidecar found for {os.path.basename(light_path)}")
 
-    # 🛰️ Inject WCS from copied sidecar into the calibrated FITS
+    # 🛰️ Inject WCS only if missing
     from main import inject_wcs_from_sidecar
-    success = inject_wcs_from_sidecar(output_path)
+    with fits.open(output_path, mode='update') as hdul:
+        header = hdul[0].header
+        if not any(k in header for k in ('CTYPE1', 'WCSAXES', 'CD1_1')):
+            success = inject_wcs_from_sidecar(output_path)
+            if success:
+                inject_minimal_sip(header)
+                hdul.flush()
+        else:
+            success = False
+            print(f"ℹ️ Skipping WCS injection; already present in {os.path.basename(output_path)}")
 
     # ✨ If WCS injection succeeded, also inject minimal fake SIP
     if success:
