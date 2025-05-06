@@ -401,7 +401,6 @@ def _calibration_worker():
     except Exception as e:
         log_message(f"⚠️ Cleanup warning: {e}")
 
-# 💾 Create ZIP archive of calibrated light frames and delete calibrated folder
     try:
         session_name_cleaned = session_title_var.get().replace(' ', '_').replace(':', '').replace('/', '_')
         imaging_date = datetime.now().strftime("%Y-%m-%d")
@@ -416,6 +415,12 @@ def _calibration_worker():
         calibrated_folder = os.path.join(output_folder, "calibrated")
         zip_filename = os.path.join(output_folder, f"{session_name_cleaned}_{imaging_date}_calibrated.zip")
 
+        # 🎬 Begin progress animation
+        progress_label_var.set("📦 Zipping calibrated frames...")
+        progress_bar.config(mode='indeterminate')
+        progress_bar.start()
+        root.update_idletasks()
+
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root_dir, _, files in os.walk(calibrated_folder):
                 for file in files:
@@ -424,7 +429,17 @@ def _calibration_worker():
                         arcname = os.path.relpath(file_path, calibrated_folder)
                         zipf.write(file_path, arcname)
 
+        # ✅ Done
+        progress_bar.stop()
+        progress_bar.config(mode='determinate')
+        progress_var.set(100)
+        progress_label_var.set("✅ ZIP archive created.")
         log_message(f"📦 Created ZIP archive: {zip_filename}")
+
+    except Exception as e:
+        progress_bar.stop()
+        progress_label_var.set("❌ ZIP creation failed.")
+        log_message(f"⚠️ Failed to create calibrated ZIP or delete calibrated folder: {e}")
 
         # 🧹 Remove calibrated folder after zipping
         if os.path.exists(calibrated_folder):
