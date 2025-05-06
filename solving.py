@@ -5,7 +5,6 @@ import concurrent.futures
 from astropy.io import fits
 from astroquery.simbad import Simbad
 from astropy import units as u
-from calibration import load_fits_by_filter
 from object_info import object_info
 from astropy.coordinates import SkyCoord, Angle
 
