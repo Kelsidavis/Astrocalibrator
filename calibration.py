@@ -380,7 +380,7 @@ def run_parallel_calibration(
 
     log_callback("🛠️ Starting master calibration frame creation...")
 
-    # Normalize filter names across all maps
+    # Normalize filter names
     def normalize_dict_keys(d):
         return {normalize_filter_name(k): v for k, v in d.items()}
 
@@ -397,47 +397,44 @@ def run_parallel_calibration(
     calibrated_folder = os.path.join(output_folder, "calibrated")
     os.makedirs(calibrated_folder, exist_ok=True)
 
-    master_dark_paths = {}
-    master_flat_paths = {}
-    master_bias_paths = {}
+    used_filters = set(light_by_filter.keys()) if not save_masters else set(
+        dark_by_filter.keys() | flat_by_filter.keys() | bias_by_filter.keys()
+    )
 
-    # Build one master bias for all filters
-    all_biases = sum(bias_by_filter.values(), [])
+    master_bias_paths = {}
+    all_biases = [f for k, v in bias_by_filter.items() if k in used_filters for f in v]
     if all_biases:
         log_callback(f"🛠️ Creating global master bias from {len(all_biases)} files...")
         bias = create_master_frame(all_biases)
         if bias is not None:
             bias_path = save_master_frame(bias, fits.getheader(all_biases[0]), output_folder, "master_bias")
             for f in light_by_filter.keys():
-                master_bias_paths[f] = bias_path  # Share same bias for all filters
+                master_bias_paths[f] = bias_path
             log_callback(f"✅ Master bias saved to {bias_path}")
         else:
             log_callback("⚠️ Failed to create global master bias frame.")
     else:
         log_callback("⚠️ No bias frames provided.")
 
-    # Build one master dark for all filters
-    all_darks = sum(dark_by_filter.values(), [])
+    master_dark_paths = {}
+    all_darks = [f for k, v in dark_by_filter.items() if k in used_filters for f in v]
     if all_darks:
         log_callback(f"🛠️ Creating global master dark from {len(all_darks)} files...")
-
-        # Load global master bias if available
-        bias_path = master_bias_paths.get(next(iter(master_bias_paths), None))
+        bias_path = next(iter(master_bias_paths.values()), None)
         master_bias = load_fits_data(bias_path) if bias_path else None
-
         dark = create_master_frame(all_darks, master_bias=master_bias)
         if dark is not None:
             dark_path = save_master_frame(dark, fits.getheader(all_darks[0]), output_folder, "master_dark")
             for f in light_by_filter.keys():
-                master_dark_paths[f] = dark_path  # Share same dark for all filters
+                master_dark_paths[f] = dark_path
             log_callback(f"✅ Master dark saved to {dark_path}")
         else:
             log_callback("⚠️ Failed to create global master dark frame.")
     else:
         log_callback("⚠️ No dark frames provided.")
 
+    # --- Flats and dark flats ---
     def group_dark_flats_by_filter_and_exptime(dark_flat_files):
-        from collections import defaultdict
         grouped = defaultdict(list)
         for path in dark_flat_files:
             try:
@@ -463,8 +460,11 @@ def run_parallel_calibration(
     dark_flat_files = flat_by_filter.get("DARK_FLAT", [])
     grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_files)
 
+    master_flat_paths = {}
     for filter_name in flat_by_filter:
         if filter_name == "DARK_FLAT":
+            continue
+        if not save_masters and filter_name not in used_filters:
             continue
 
         flat_paths = flat_by_filter[filter_name]
@@ -472,8 +472,8 @@ def run_parallel_calibration(
             continue
 
         log_callback(f"🧪 Calibrating flats for {filter_name} ({len(flat_paths)} frames)")
-
         matched_dark = get_matching_dark_flat(flat_paths[0], grouped_dark_flats)
+
         if matched_dark:
             log_callback(f"🌑 Using dark flat: {os.path.basename(matched_dark)}")
         else:
@@ -488,21 +488,19 @@ def run_parallel_calibration(
         else:
             log_callback(f"⚠️ Failed to create master flat for {filter_name}")
 
-    # Calibrate lights
+    # --- Calibrate lights ---
     futures = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for filter_name, light_paths in light_by_filter.items():
             for light_path in light_paths:
-                futures.append(
-                    executor.submit(
-                        calibrate_and_save,
-                        light_path,
-                        master_dark_paths,
-                        master_flat_paths,
-                        master_bias_paths,
-                        calibrated_folder
-                    )
-                )
+                futures.append(executor.submit(
+                    calibrate_and_save,
+                    light_path,
+                    master_dark_paths,
+                    master_flat_paths,
+                    master_bias_paths,
+                    calibrated_folder
+                ))
 
         for i, future in enumerate(concurrent.futures.as_completed(futures)):
             try:
@@ -518,18 +516,15 @@ def run_parallel_calibration(
 
     if save_masters:
         log_callback("📦 Creating ZIP archive of master calibration frames...")
-
         session_date = datetime.now().strftime("%Y-%m-%d")
         object_safe = session_title.replace(' ', '_').replace(':', '_').replace('/', '_') or 'UnknownObject'
         zip_name = f"{object_safe}_{session_date}_masters.zip"
         zip_path = os.path.join(output_folder, zip_name)
-
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for file in os.listdir(output_folder):
                 if file.endswith("_master_dark.fits") or file.endswith("_master_flat.fits") or file.endswith("_master_bias.fits"):
                     path = os.path.join(output_folder, file)
                     zipf.write(path, arcname=file)
-
         log_callback(f"📦 Master calibration frames zipped successfully: {zip_name}")
     else:
         log_callback("ℹ️ Save Masters not enabled. Skipping master frames ZIP creation.")
