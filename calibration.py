@@ -350,16 +350,11 @@ def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     gc.collect()
     return None
 
-def run_parallel_calibration(
-    light_by_filter,
-    dark_by_filter,
-    flat_by_filter,
-    bias_by_filter,
-    output_folder,
-    session_title="UnknownObject",
-    log_callback=None,
-    save_masters=False
-):
+def run_parallel_calibration(light_by_filter, dark_by_filter, flat_by_filter,
+                              bias_by_filter, output_folder, session_title,
+                              log_callback, save_masters=False,
+                              dark_flat_file_list=None):  # ✅ new param
+
     if log_callback is None:
         log_callback = print
 
@@ -418,8 +413,8 @@ def run_parallel_calibration(
     else:
         log_callback("⚠️ No dark frames provided.")
 
-    dark_flat_files = flat_by_filter.get("DARK_FLAT", [])
-    grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_files)
+        # ✅ Use the dark flats exactly as passed in from GUI
+        group_dark_flats_by_filter_and_exptime(dark_flat_file_list)
 
     def get_matching_dark_flat(flat_path, grouped_dark_flats):
         try:

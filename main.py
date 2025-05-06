@@ -16,7 +16,7 @@ from gui import ToolTip
 from solving import plate_solve_and_update_header
 from settings import load_settings, save_settings, remember_file, get_remembered_file
 
-from gui import light_files, dark_files, flat_files, bias_files
+from gui import light_files, dark_files, flat_files, bias_files, dark_flat_files
 from gui import light_btn, dark_btn, flat_btn, bias_btn, darkflat_btn
 from gui import reset_btn
 from gui import master_dark_btn, master_flat_btn, master_bias_btn
@@ -383,9 +383,9 @@ def _calibration_worker():
         output_folder=output_folder,
         session_title=session_title_var.get(),
         log_callback=log_message,
-        save_masters=save_masters_var.get()
+        save_masters=save_masters_var.get(),
+        dark_flat_file_list=dark_flat_files  # ✅ Pass raw user input directly
     )
-
 
     elapsed = time.time() - start_time
     log_message(f"✅ Calibration complete in {elapsed:.2f} seconds.")
