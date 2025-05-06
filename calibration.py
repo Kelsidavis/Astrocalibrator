@@ -409,7 +409,7 @@ def run_parallel_calibration(
     else:
         log_callback("⚠️ No dark frames provided.")
 
-dark_flat_files = flat_by_filter.get("DARK_FLAT", [])
+    dark_flat_files = flat_by_filter.get("DARK_FLAT", [])
     grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_files)
 
     def get_matching_dark_flat(flat_path, grouped_dark_flats):
