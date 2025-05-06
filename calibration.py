@@ -21,6 +21,20 @@ MASTER_NAMES = {
     'dark_flat': 'master_dark_flat'
 }
 
+def group_darks_by_exposure(dark_files):
+    grouped = defaultdict(list)
+    for path in dark_files:
+        try:
+            hdr = fits.getheader(path)
+            exptime = float(hdr.get('EXPTIME', -1))
+            if exptime > 0:
+                grouped[exptime].append(path)
+            else:
+                log_message(f"⚠️ Skipping dark {path} — invalid EXPTIME")
+        except Exception as e:
+            log_message(f"⚠️ Failed to group dark {path}: {e}")
+    return dict(grouped)
+
 def group_flats_by_filter_and_exposure(flat_files):
     grouped = defaultdict(list)
     for path in flat_files:
