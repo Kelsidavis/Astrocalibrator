@@ -38,7 +38,7 @@ def group_dark_flats_by_filter_and_exptime(dark_flat_files):
         try:
             hdr = fits.getheader(path)
             filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
-            exptime = float(hdr.get("EXPTIME", -1))
+            exptime = round(float(hdr.get("EXPTIME", -1)), 1)  # ⬅️ Round here
             if exptime > 0:
                 grouped[(filt, exptime)].append(path)
         except Exception as e:
@@ -197,6 +197,7 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
             with fits.open(bias_path, memmap=False) as bias_hdul:
                 master_bias = bias_hdul[0].data.astype(float)
             light_data -= master_bias
+            print(f"🧪 Applied master bias for filter '{filter_name}'")
 
     if use_master and master_dark_paths:
         dark_path = load_filter_master(master_dark_paths, filter_name)
@@ -211,6 +212,7 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
 
             light_data -= master_dark * scale_factor
             light_header['DARKSCL'] = (round(scale_factor, 4), 'Dark scale factor used')
+            print(f"🧪 Applied master dark for filter '{filter_name}' (scale={round(scale_factor, 4)})")
 
     if use_master and master_flat_paths:
         flat_path = load_filter_master(master_flat_paths, filter_name)
@@ -223,6 +225,7 @@ def calibrate_image(light_path, use_master=False, master_dark_paths=None, master
                     normalized_flat = (master_flat / median_flat) ** 1.09  # Slight exaggeration
                     light_data /= normalized_flat
                     light_header['CALFLAT'] = (os.path.basename(flat_path), 'Flat field used (exp=1.1)')
+                    print(f"🧪 Applied master flat for filter '{filter_name}'")
                 else:
                     print(f"⚠️ Flat median is zero in {flat_path}, skipping flat normalization.")
     return light_data, light_header
@@ -419,14 +422,14 @@ def run_parallel_calibration(
     grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_files)
 
     def get_matching_dark_flat(flat_path, grouped_dark_flats):
-        try:
-            hdr = fits.getheader(flat_path)
-            filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
-            exptime = float(hdr.get("EXPTIME", -1))
-            return grouped_dark_flats.get((filt, exptime), [None])[0]
-        except Exception as e:
-            print(f"⚠️ Failed to match dark flat: {e}")
-            return None
+    try:
+        hdr = fits.getheader(flat_path)
+        filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
+        exptime = round(float(hdr.get("EXPTIME", -1)), 1)  # ⬅️ Round here
+        return grouped_dark_flats.get((filt, exptime), [None])[0]
+    except Exception as e:
+        print(f"⚠️ Failed to match dark flat: {e}")
+        return None
 
     master_flat_paths = {}
     for filter_name in flat_by_filter:
