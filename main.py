@@ -707,7 +707,6 @@ def run_plate_solving():
 def solve_then_calibrate(result_queue):
     def worker():
         try:
-            run_plate_solving()
             _calibration_worker()
         except Exception as e:
             log_message(f"💥 Exception in solve_then_calibrate: {e}")
@@ -807,7 +806,7 @@ if __name__ == "__main__":
 
     initialize_main_widgets()
     calibrate_btn.config(command=start_processing)
-    root.after(500, enable_plate_solving)
+#    root.after(500, enable_plate_solving)
     root.after(100, disable_file_buttons)
     root.mainloop()
 
