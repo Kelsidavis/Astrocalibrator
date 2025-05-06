@@ -4,13 +4,12 @@ from tkinter import filedialog
 import os
 import shutil
 import threading
-import concurrent.futures
 import queue
 import zipfile
 from datetime import datetime
 from astropy.io import fits
 
-from gui import root, log_message, log_textbox, output_folder_var, progress_var, progress_label_var
+from gui import root, log_message, output_folder_var, progress_var, progress_label_var
 from gui import session_title_var, master_dark_path, master_flat_path, master_bias_path
 from gui import master_dark_enabled, master_flat_enabled, master_bias_enabled
 from gui import ToolTip
@@ -18,7 +17,6 @@ from solving import plate_solve_and_update_header
 from settings import load_settings, save_settings, remember_file, get_remembered_file
 
 from gui import light_files, dark_files, flat_files, bias_files
-from gui import file_frame, light_label, dark_label, flat_label
 from gui import light_btn, dark_btn, flat_btn, bias_btn, darkflat_btn
 from gui import reset_btn
 from gui import master_dark_btn, master_flat_btn, master_bias_btn
@@ -27,7 +25,6 @@ from gui import object_description_var, object_distance_var
 from object_info import object_info
 
 from astropy.coordinates import SkyCoord
-from astropy.wcs import WCS
 import astropy.units as u
 import tkinter.messagebox as mb
 import glob
@@ -65,8 +62,6 @@ style.configure(
 )
 
 # main.py
-
-main_widgets_initialized = False
 
 def has_enough_space(folder, required_bytes=500_000_000):
     """Check if the specified folder has enough free disk space."""
@@ -481,12 +476,6 @@ def _calibration_worker():
     if cached_object_distance:
         object_distance_var.set(cached_object_distance)
 
-
-def run_calibration_pipeline():
-
-    calibrate_btn.config(state='disabled')
-    threading.Thread(target=_calibration_worker, daemon=True).start()
-
 def run_plate_solving():
     global calibrate_btn
     result_queue = queue.Queue()
@@ -783,11 +772,6 @@ def start_processing():
     calibrate_btn.config(state='disabled')
     solve_then_calibrate(result_queue)
 
-def debug_widget_list():
-    print("\n🧩 Widgets inside file_frame:")
-    for child in file_frame.winfo_children():
-        print(" -", child, "text=", getattr(child, 'cget', lambda x: 'N/A')('text'))
-
 def disable_file_buttons():
     light_btn.config(state='disabled')
     dark_btn.config(state='disabled')
@@ -799,10 +783,6 @@ def disable_file_buttons():
     master_bias_btn.config(state='disabled')
     calibrate_btn.config(state='disabled')
     reset_btn.config(state='disabled')
-
-def enable_plate_solving():
-    from gui import try_run_plate_solving
-    try_run_plate_solving()
 
 def fade_out_progress_label():
     try:
@@ -816,7 +796,6 @@ def fade_out_progress_label():
                 progress_label_var.set("")
                 return
             opacity = 1.0 - (step / 10)
-            color = f"#{int(128 * opacity + 127):02x}{int(128 * opacity + 127):02x}{int(128 * opacity + 127):02x}"
             progress_label_var.set("")  # Just clear the text (no fancy fade if no label widget exists)
             root.after(100, lambda: gradual_fade(step + 1))
 
@@ -831,7 +810,6 @@ if __name__ == "__main__":
 
     initialize_main_widgets()
     calibrate_btn.config(command=start_processing)
-#    root.after(500, enable_plate_solving)
     root.after(100, disable_file_buttons)
     root.mainloop()
 
