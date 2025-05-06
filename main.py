@@ -28,8 +28,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 import tkinter.messagebox as mb
 import glob
-from calibration import run_parallel_calibration, load_fits_by_filter, normalize_filter_name, dark_by_exptime
-
+from calibration import run_parallel_calibration, load_fits_by_filter, normalize_filter_name, safe_load_by_exptime
 
 # Globals for buttons
 select_output_btn = None
@@ -364,27 +363,26 @@ def _calibration_worker():
     os.makedirs(temp_folder, exist_ok=True)
 
     light_by_filter = load_fits_by_filter(light_files)
-    dark_by_exptime = group_darks_by_exposure(dark_files)
+    dark_by_exptime = safe_load_by_exptime(dark_files)
     flat_by_filter = load_fits_by_filter(flat_files)
     bias_by_filter = load_fits_by_filter(bias_files)
 
     # 🔧 Normalize filters before calibration to ensure master matching consistency
     light_by_filter = {normalize_filter_name(k): v for k, v in light_by_filter.items()}
-    dark_by_filter = {normalize_filter_name(k): v for k, v in dark_by_filter.items()}
+    dark_by_exptime = {normalize_filter_name(k): v for k, v in dark_by_exptime.items()}
     flat_by_filter = {normalize_filter_name(k): v for k, v in flat_by_filter.items()}
     bias_by_filter = {normalize_filter_name(k): v for k, v in bias_by_filter.items()}
 
-
     master_dark_paths, master_flat_paths, master_bias_paths = run_parallel_calibration(
         light_by_filter=light_by_filter,
-        dark_by_exptime=dark_by_exptime,  # Use darks grouped only by exposure
+        dark_by_exptime=dark_by_exptime,
         flat_by_filter=flat_by_filter,
         bias_by_filter=bias_by_filter,
         output_folder=output_folder,
         session_title=session_title_var.get(),
         log_callback=log_message,
         save_masters=save_masters_var.get(),
-        dark_flat_file_list=dark_flat_files 
+        dark_flat_file_list=dark_flat_files
     )
 
     elapsed = time.time() - start_time

@@ -54,7 +54,12 @@ def group_dark_flats_by_filter_and_exptime(dark_flat_files):
         try:
             hdr = fits.getheader(path)
             filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
-            exptime = round(float(hdr.get("EXPTIME", -1)), 1)  # ⬅️ Round here
+            exptime_raw = hdr.get("EXPTIME", -1)
+            try:
+                exptime = round(float(exptime_raw), 1)
+            except (TypeError, ValueError):
+                print(f"⚠️ Invalid EXPTIME value: {exptime_raw} in {path}")
+                continue
             if exptime > 0:
                 grouped[(filt, exptime)].append(path)
         except Exception as e:
@@ -65,13 +70,15 @@ def normalize_filter_name(raw):
     if not raw:
         return 'UNKNOWN'
 
+    raw = str(raw)  # 🔒 Ensure input is a string
+
     # Normalize Unicode: strip accents, convert full-width & compatibility characters
     raw = unicodedata.normalize('NFKD', raw)
     raw = ''.join(c for c in raw if not unicodedata.combining(c))
 
     # Lowercase and strip non-alphanumerics
     raw = raw.lower().strip()
-    raw = re.sub(r'[^a-z0-9]', '', raw)  # Remove hyphens, underscores, spaces, etc.
+    raw = re.sub(r'[^a-z0-9]', '', raw)
 
     aliases = {
         'ha': ['ha', 'halpha', 'hα', 'hαlpha', 'h-alpha'],
@@ -87,7 +94,7 @@ def normalize_filter_name(raw):
         if raw in variants:
             return norm.upper()
 
-    return raw.upper()  # default fallback
+    return raw.upper()
 
 def create_master_flat_scaled(flat_paths, dark_flat_path=None):
     """Create a master flat by subtracting matching dark flat and normalizing."""
@@ -297,69 +304,90 @@ def load_fits_by_filter(file_list):
             filtered['UNKNOWN'].append(path)
     return filtered
 
-def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_bias_paths, calibrated_folder):
-    calibrated_data, header = calibrate_image(
-        light_path,
-        use_master=True,
-        master_dark_paths=master_dark_paths,
-        master_flat_paths=master_flat_paths,
-        master_bias_paths=master_bias_paths
-    )
-
-    header['CALIB'] = (True, 'Frame has been calibrated')
-    header.add_history('Calibrated using Astrocalibrator')
-
-    important_fields = ['OBJECT', 'INSTRUME', 'FILTER', 'DATE-OBS', 'EXPTIME', 'TELESCOP']
-    preserved = []
-    missing = []
-
-    for key in important_fields:
-        if key in header:
-            preserved.append(f"{key}='{header[key]}'")
-        else:
-            missing.append(key)
-
-    likely_osc = ('BAYERPAT' in header) or ('BAYER' in str(header)) or ('FILTER' not in header)
-
-    log_lines = [f"🧾 Preserved header fields for {os.path.basename(light_path)}:"]
-    for item in preserved:
-        log_lines.append(f"   - {item}")
-
-    if missing:
-        suppressed = False
-        if likely_osc and 'FILTER' in missing:
-            missing = [field for field in missing if field != 'FILTER']
-            suppressed = True
-        if missing:
-            log_lines.append(f"⚠️ Missing expected fields: {', '.join(missing)}")
-        elif suppressed:
-            log_lines.append(f"ℹ️ Missing 'FILTER' suppressed for likely OSC image.")
-
-    print("\n".join(log_lines))
-
-    base_name = os.path.basename(light_path)
-    output_path = os.path.join(
-        calibrated_folder,
-        f"{os.path.splitext(base_name)[0]}_cal.fits"
-    )
-
-    fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
-
-    # 🛰️ Inject WCS from sidecar only if not already present (skip object detection)
-    try:
-        with fits.open(output_path, mode='update') as hdul:
-            hdr = hdul[0].header
-            if not any(k in hdr for k in ('CD1_1', 'PC1_1', 'WCSAXES')):
-                if inject_wcs_from_sidecar(output_path):
-                    inject_minimal_sip(hdr)
-                    hdul.flush()
-                else:
-                    print(f"⚠️ WCS injection from sidecar failed for {os.path.basename(output_path)}")
+def safe_load_by_exptime(fits_paths):
+    from collections import defaultdict
+    result = defaultdict(list)
+    for path in fits_paths:
+        try:
+            hdr = fits.getheader(path)
+            exptime = float(hdr.get('EXPTIME', -1))
+            if exptime > 0:
+                result[exptime].append(path)
             else:
-                print(f"ℹ️ WCS already present in {os.path.basename(output_path)}, skipping injection.")
-    except Exception as e:
-        print(f"⚠️ Exception during WCS injection: {e}")
+                print(f"⚠️ Skipping dark: {path} – invalid or missing EXPTIME")
+        except Exception as e:
+            print(f"⚠️ Failed to read EXPTIME for {path}: {e}")
+    return dict(result)
+
+
+def calibrate_and_save(light_path, master_dark_paths, master_flat_paths, master_bias_paths, calibrated_folder):
+    try:
+        calibrated_data, header = calibrate_image(
+            light_path,
+            use_master=True,
+            master_dark_paths=master_dark_paths,
+            master_flat_paths=master_flat_paths,
+            master_bias_paths=master_bias_paths
+        )
+
+        header['CALIB'] = (True, 'Frame has been calibrated')
+        header.add_history('Calibrated using Astrocalibrator')
+
+        important_fields = ['OBJECT', 'INSTRUME', 'FILTER', 'DATE-OBS', 'EXPTIME', 'TELESCOP']
+        preserved = []
+        missing = []
+
+        for key in important_fields:
+            if key in header:
+                preserved.append(f"{key}='{header[key]}'")
+            else:
+                missing.append(key)
+
+        likely_osc = ('BAYERPAT' in header) or ('BAYER' in str(header)) or ('FILTER' not in header)
+
+        log_lines = [f"🧾 Preserved header fields for {os.path.basename(light_path)}:"]
+        for item in preserved:
+            log_lines.append(f"   - {item}")
+
+        if missing:
+            suppressed = False
+            if likely_osc and 'FILTER' in missing:
+                missing = [field for field in missing if field != 'FILTER']
+                suppressed = True
+            if missing:
+                log_lines.append(f"⚠️ Missing expected fields: {', '.join(missing)}")
+            elif suppressed:
+                log_lines.append(f"ℹ️ Missing 'FILTER' suppressed for likely OSC image.")
+
+        print("\n".join(log_lines))
+
+        base_name = os.path.basename(light_path)
+        output_path = os.path.join(
+            calibrated_folder,
+            f"{os.path.splitext(base_name)[0]}_cal.fits"
+        )
+
+        fits.writeto(output_path, calibrated_data, header=header, overwrite=True)
+
+        # 🛰️ Inject WCS from sidecar only if not already present (skip object detection)
+        try:
+            with fits.open(output_path, mode='update') as hdul:
+                hdr = hdul[0].header
+                if not any(k in hdr for k in ('CD1_1', 'PC1_1', 'WCSAXES')):
+                    if inject_wcs_from_sidecar(output_path):
+                        inject_minimal_sip(hdr)
+                        hdul.flush()
+                    else:
+                        print(f"⚠️ WCS injection from sidecar failed for {os.path.basename(output_path)}")
+                else:
+                    print(f"ℹ️ WCS already present in {os.path.basename(output_path)}, skipping injection.")
+        except Exception as e:
+            print(f"⚠️ Exception during WCS injection: {e}")
+
         return f"✅ Calibrated {os.path.basename(light_path)}"
+
+    except Exception as e:
+        return f"💥 Calibration failed for {os.path.basename(light_path)}: {e}"
 
 def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     if not image_list:
@@ -376,27 +404,26 @@ def build_and_save_master(image_list, output_folder, name, dark_flat_path=None):
     gc.collect()
     return None
 
-def run_parallel_calibration(light_by_filter, dark_by_filter, flat_by_filter,
+def run_parallel_calibration(light_by_filter, dark_by_exptime, flat_by_filter,
                               bias_by_filter, output_folder, session_title,
                               log_callback, save_masters=False,
-                              dark_flat_file_list=None):  # ✅ new param
+                              dark_flat_file_list=None):
 
     if log_callback is None:
         log_callback = print
 
     log_callback("🛠️ Starting master calibration frame creation...")
 
-    # Normalize filter names
     def normalize_dict_keys(d):
         return {normalize_filter_name(k): v for k, v in d.items()}
 
     light_by_filter = normalize_dict_keys(light_by_filter)
-    dark_by_filter = normalize_dict_keys(dark_by_filter)
+    dark_by_exptime = normalize_dict_keys(dark_by_exptime)
     flat_by_filter = normalize_dict_keys(flat_by_filter)
     bias_by_filter = normalize_dict_keys(bias_by_filter)
 
     log_callback(f"📁 Filters in lights: {list(light_by_filter.keys())}")
-    log_callback(f"📁 Filters in darks: {list(dark_by_filter.keys())}")
+    log_callback(f"📁 Exposures in darks: {[round(float(k), 2) if isinstance(k, (int, float, str)) and str(k).replace('.', '', 1).isdigit() else k for k in dark_by_exptime.keys()]}")
     log_callback(f"📁 Filters in flats: {list(flat_by_filter.keys())}")
     log_callback(f"📁 Filters in biases: {list(bias_by_filter.keys())}")
 
@@ -404,7 +431,7 @@ def run_parallel_calibration(light_by_filter, dark_by_filter, flat_by_filter,
     os.makedirs(calibrated_folder, exist_ok=True)
 
     used_filters = set(light_by_filter.keys()) if not save_masters else set(
-        dark_by_filter.keys() | flat_by_filter.keys() | bias_by_filter.keys()
+        list(flat_by_filter.keys()) | list(bias_by_filter.keys())
     )
 
     master_bias_paths = {}
@@ -423,7 +450,7 @@ def run_parallel_calibration(light_by_filter, dark_by_filter, flat_by_filter,
         log_callback("⚠️ No bias frames provided.")
 
     master_dark_paths = {}
-    all_darks = [f for k, v in dark_by_filter.items() if k in used_filters for f in v]
+    all_darks = [f for v in dark_by_exptime.values() for f in v]
     if all_darks:
         log_callback(f"🛠️ Creating global master dark from {len(all_darks)} files...")
         bias_path = next(iter(master_bias_paths.values()), None)
@@ -439,38 +466,29 @@ def run_parallel_calibration(light_by_filter, dark_by_filter, flat_by_filter,
     else:
         log_callback("⚠️ No dark frames provided.")
 
-        # ✅ Use the dark flats exactly as passed in from GUI
-        group_dark_flats_by_filter_and_exptime(dark_flat_file_list)
+    grouped_dark_flats = group_dark_flats_by_filter_and_exptime(dark_flat_file_list or [])
+    log_callback(f"🔍 Dark flat keys: {list(grouped_dark_flats.keys())}")
 
-    def get_matching_dark_flat(flat_path, grouped_dark_flats):
+    def get_matching_dark_flat(flat_path):
         try:
             hdr = fits.getheader(flat_path)
             filt = normalize_filter_name(hdr.get("FILTER", "UNKNOWN"))
-            exptime = round(float(hdr.get("EXPTIME", -1)), 1)  # ⬅️ Round here
+            exptime = round(float(hdr.get("EXPTIME", -1)), 1)
             return grouped_dark_flats.get((filt, exptime), [None])[0]
         except Exception as e:
             print(f"⚠️ Failed to match dark flat: {e}")
             return None
 
     master_flat_paths = {}
-    for filter_name in flat_by_filter:
-        if filter_name == "DARK_FLAT":
-            continue
+    for filter_name, flat_paths in flat_by_filter.items():
         if not save_masters and filter_name not in used_filters:
             continue
-
-        flat_paths = flat_by_filter[filter_name]
-        if not flat_paths:
-            continue
-
         log_callback(f"🧪 Calibrating flats for {filter_name} ({len(flat_paths)} frames)")
-        matched_dark = get_matching_dark_flat(flat_paths[0], grouped_dark_flats)
-
+        matched_dark = get_matching_dark_flat(flat_paths[0])
         if matched_dark:
             log_callback(f"🌑 Using dark flat: {os.path.basename(matched_dark)}")
         else:
             log_callback(f"⚠️ No matching dark flat for {filter_name} – bias-only flat calibration")
-
         flat = create_master_flat_scaled(flat_paths, dark_flat_path=matched_dark)
         if flat is not None:
             flat_median = np.median(flat)
@@ -480,7 +498,6 @@ def run_parallel_calibration(light_by_filter, dark_by_filter, flat_by_filter,
         else:
             log_callback(f"⚠️ Failed to create master flat for {filter_name}")
 
-    # --- Calibrate lights ---
     futures = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for filter_name, light_paths in light_by_filter.items():
@@ -506,39 +523,17 @@ def run_parallel_calibration(light_by_filter, dark_by_filter, flat_by_filter,
 
     log_callback("✅ Per-filter calibration complete.")
 
-        # 🧹 Clean up per-filter master flats unless saving masters
-    if not save_masters:
-        for flat_path in master_flat_paths.values():
-            try:
-                os.remove(flat_path)
-                log_callback(f"🧹 Deleted master flat: {os.path.basename(flat_path)}")
-            except Exception as e:
-                log_callback(f"⚠️ Failed to delete {flat_path}: {e}")
-
     if save_masters:
         log_callback("📦 Creating ZIP archive of master calibration frames...")
-
-        # Update progress label for zipping
-        from gui import progress_label_var, progress_label, root
-        progress_label_var.set("Zipping master frames...")
-        progress_label.config(fg='blue')
-        root.update_idletasks()
-
         session_date = datetime.now().strftime("%Y-%m-%d")
         object_safe = session_title.replace(' ', '_').replace(':', '_').replace('/', '_') or 'UnknownObject'
         zip_name = f"{object_safe}_{session_date}_masters.zip"
         zip_path = os.path.join(output_folder, zip_name)
         master_files = list(master_bias_paths.values()) + list(master_dark_paths.values()) + list(master_flat_paths.values())
-
         with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as zipf:
             for path in master_files:
                 if path and os.path.exists(path):
                     zipf.write(path, arcname=os.path.basename(path))
-
-        progress_label_var.set("Idle")
-        progress_label.config(fg='black')
-        root.update_idletasks()
-
         log_callback(f"📦 Master calibration frames zipped successfully: {zip_name}")
 
     return master_dark_paths, master_flat_paths, master_bias_paths
